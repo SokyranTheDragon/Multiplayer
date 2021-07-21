@@ -127,7 +127,7 @@ namespace Multiplayer.Client
         public static ISyncField SyncStorytellerDef = Sync.Field(typeof(Storyteller), "def").SetHostOnly().PostApply(StorytellerDef_Post).SetVersion(2);
         public static ISyncField SyncStorytellerDifficulty = Sync.Field(typeof(Storyteller), "difficulty").SetHostOnly().PostApply(StorytellerDifficutly_Post).SetVersion(2);
 
-        [MpPrefix(typeof(StorytellerUI), nameof(StorytellerUI.DrawStorytellerSelectionInterface_NewTemp))]
+        [MpPrefix(typeof(StorytellerUI), nameof(StorytellerUI.DrawStorytellerSelectionInterface))]
         static void ChangeStoryteller()
         {
             SyncStorytellerDef.Watch(Find.Storyteller);
@@ -653,7 +653,7 @@ namespace Multiplayer.Client
             __instance.draggedItem = null;
         }
 
-        [MpPrefix(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob_NewTemp))]
+        [MpPrefix(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.TryTakeOrderedJob))]
         static void TryTakeOrderedJob_Prefix(Job job)
         {
             if (Multiplayer.ExecutingCmds && job.loadID < 0)

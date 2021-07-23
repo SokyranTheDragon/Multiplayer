@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using Multiplayer.API;
 using Multiplayer.Common;
 using RimWorld;
@@ -8,12 +8,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Serialization;
 using System.Text;
-using UnityEngine;
 using Verse;
-using Verse.AI;
-using Verse.AI.Group;
 
 namespace Multiplayer.Client
 {
@@ -221,11 +217,10 @@ namespace Multiplayer.Client
                         bool isNull = data.ReadBool();
                         if (isNull) return null;
 
-                        bool hasValue = data.ReadBool();
-                        if (!hasValue) return Activator.CreateInstance(type);
+                        Type nullableType = Nullable.GetUnderlyingType(type);
+                        object value = ReadSyncObject(data, nullableType);
 
-                        Type nullableType = type.GetGenericArguments()[0];
-                        return Activator.CreateInstance(type, ReadSyncObject(data, nullableType));
+                        return type.GetConstructors()[0].Invoke(new object[] { value });
                     }
 
                     if (genericTypeDefinition == typeof(Dictionary<,>))
@@ -432,12 +427,8 @@ namespace Multiplayer.Client
                         data.WriteBool(isNull);
                         if (isNull) return;
 
-                        bool hasValue = (bool)obj.GetPropertyOrField("HasValue");
-                        data.WriteBool(hasValue);
-
-                        Type nullableType = type.GetGenericArguments()[0];
-                        if (hasValue)
-                            WriteSyncObject(data, obj.GetPropertyOrField("Value"), nullableType);
+                        Type nullableType = Nullable.GetUnderlyingType(type);
+                        WriteSyncObject(data, Convert.ChangeType(obj, nullableType), nullableType);
 
                         return;
                     }

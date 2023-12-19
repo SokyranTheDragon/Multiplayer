@@ -419,6 +419,10 @@ namespace Multiplayer.Client
                 (ByteReader data) => ReadSync<Caravan>(data)?.pather
             },
             {
+                (ByteWriter data, Caravan_ForageTracker tracker) => WriteSync(data, tracker.caravan),
+                (ByteReader data) => ReadSync<Caravan>(data)?.forage
+            },
+            {
                 (ByteWriter data, WITab_Caravan_Gear tab) => {
                     data.WriteBool(tab.draggedItem != null);
                     if (tab.draggedItem != null) {

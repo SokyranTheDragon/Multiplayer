@@ -312,6 +312,17 @@ namespace Multiplayer.Client
             // It can display confirmation like royal implant (no longer used?) or implanting IUD (if it would terminate pregnancy).
             // On top of that, in case of implanting the Xenogerm recipe, it will open a dialog with list of available options.
             SyncMethod.Register(typeof(HealthCardUtility), nameof(HealthCardUtility.CreateSurgeryBill));
+
+            // Caravan dev mode gizmos
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 4).SetDebugOnly(); // Mental break
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 6).SetDebugOnly(); // Make random pawn hungry
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 7).SetDebugOnly(); // Kill random pawn
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 9).SetDebugOnly(); // Kill all non-slave pawns
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 10).SetDebugOnly(); // Harm random pawn
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 11).SetDebugOnly(); // Down random pawn
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 15).SetDebugOnly(); // Plague on random pawn
+            SyncMethod.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 16).SetDebugOnly(); // +20% psyfocus
+            SyncMethod.Register(typeof(Caravan_ForageTracker), nameof(Caravan_ForageTracker.Forage)).SetDebugOnly(); // Force forage
         }
 
         [MpPrefix(typeof(PawnColumnWorker_CopyPasteTimetable), nameof(PawnColumnWorker_CopyPasteTimetable.PasteTo))]

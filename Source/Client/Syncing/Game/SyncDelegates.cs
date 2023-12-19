@@ -185,6 +185,9 @@ namespace Multiplayer.Client
 
             SyncDelegate.Lambda(typeof(Pawn), nameof(Pawn.GetGizmos), 5).SetDebugOnly(); // Set growth tier
 
+            // Caravan dev mode gizmos
+            SyncDelegate.Lambda(typeof(Caravan), nameof(Caravan.GetGizmos), 17).SetDebugOnly(); // Trigger random dissolution event (CompDissolution, wastepacks)
+
             InitRituals();
             InitChoiceLetters();
             InitDevTools();

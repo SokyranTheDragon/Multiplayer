@@ -37,7 +37,7 @@ public class MultiplayerWorldComp : IHasSessionData
 
         sessionManager.ExposeSessions();
         // Ensure a pause lock session exists if there's any pause locks registered
-        if (!PauseLockSession.pauseLocks.NullOrEmpty())
+        if (!PauseLockSession.pauseLocks.NullOrEmpty() && Scribe.mode == LoadSaveMode.PostLoadInit)
             sessionManager.AddSession(new PauseLockSession(null));
 
         DoBackCompat();

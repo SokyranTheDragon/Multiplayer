@@ -114,6 +114,10 @@ public static class FactionCreator
     {
         PawnUtility.GiveAllStartingPlayerPawnsThought(ThoughtDefOf.NewColonyOptimism);
         ResearchUtility.ApplyPlayerStartingResearch();
+        // Initialize anomaly. Since the Anomaly comp is currently shared by all players,
+        // we need to ensure that any new factions have access to anomaly research if
+        // anomaly content was started.
+        Find.ResearchManager.Notify_MonolithLevelChanged(Find.Anomaly.Level);
     }
 
     private static void PrepareGameInitData(int sessionId)

@@ -379,11 +379,6 @@ namespace Multiplayer.Client
             // Jammed door
             SyncMethod.Register(typeof(Building_JammedDoor), nameof(Building_JammedDoor.UnlockDoor)).SetDebugOnly(); // Dev unjam door
 
-            // Void monolith
-            // Targeting should be handled by syncing `ITargetingSource:OrderForceTarget`
-            SyncMethod.Lambda(typeof(Building_VoidMonolith), nameof(Building_VoidMonolith.GetGizmos), 1).SetDebugOnly(); // Dev activate
-            SyncMethod.Lambda(typeof(Building_VoidMonolith), nameof(Building_VoidMonolith.GetGizmos), 2).SetDebugOnly(); // Dev relink
-
             // Harbinger Tree
             SyncMethod.Register(typeof(HarbingerTree), nameof(HarbingerTree.CreateCorpseStockpile)).SetContext(SyncContext.MapSelected);
             SyncMethod.Register(typeof(HarbingerTree), nameof(HarbingerTree.AddNutrition)).SetDebugOnly();

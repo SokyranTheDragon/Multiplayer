@@ -246,6 +246,14 @@ namespace Multiplayer.Client
             SyncDelegate.Lambda(typeof(Hediff_MetalhorrorImplant), nameof(Hediff_MetalhorrorImplant.GetGizmos), 6).SetDebugOnly(); // Change biosignature
             SyncMethod.Lambda(typeof(Hediff_Shambler), nameof(Hediff_Shambler.GetGizmos), 0).SetDebugOnly(); // Self raise
 
+            // Void monolith
+            // Targeting should be handled by syncing `ITargetingSource:OrderForceTarget`
+            SyncMethod.Lambda(typeof(Building_VoidMonolith), nameof(Building_VoidMonolith.GetGizmos), 1).SetDebugOnly(); // Dev activate
+            SyncMethod.Lambda(typeof(Building_VoidMonolith), nameof(Building_VoidMonolith.GetGizmos), 2).SetDebugOnly(); // Dev relink
+            // TryTakeOrderedJob call is already synced, but we also need to make sure that
+            // CompProximityLetter.letterSent is set to true to prevent a desync.
+            SyncDelegate.Lambda(typeof(Building_VoidMonolith), nameof(Building_VoidMonolith.GetFloatMenuOptions), 0);
+
             InitRituals();
             InitChoiceLetters();
             InitDevTools();

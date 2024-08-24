@@ -420,11 +420,11 @@ namespace Multiplayer.Client
                     .AllNotNull();
 
                 foreach (var method in methods)
-                    MP.RegisterSyncMethod(method);
+                    Sync.RegisterSyncMethod(method);
 
                 // This OnRenamed method will create a storage group, which needs to be synced.
                 // No other vanilla rename dialogs need syncing OnRenamed, but modded ones potentially could need it.
-                MP.RegisterSyncMethod(typeof(Dialog_RenameBuildingStorage_CreateNew), nameof(Dialog_RenameBuildingStorage_CreateNew.OnRenamed))
+                SyncMethod.Register(typeof(Dialog_RenameBuildingStorage_CreateNew), nameof(Dialog_RenameBuildingStorage_CreateNew.OnRenamed))
                     .TransformTarget(Serializer.New(
                         (Dialog_RenameBuildingStorage_CreateNew dialog) => dialog.building,
                         (IStorageGroupMember member) => new Dialog_RenameBuildingStorage_CreateNew(member)));

@@ -666,6 +666,48 @@ namespace Multiplayer.Client
                     }
                 }
             },
+            {
+                (SyncWorker sync, ref DesignationManager manager) =>
+                {
+                    if (sync.isWriting)
+                        sync.Write(manager?.map);
+                    else
+                        manager = sync.Read<Map>()?.designationManager;
+                }
+            },
+            {
+                (SyncWorker sync, ref Designation designation) =>
+                {
+                    if (sync.isWriting)
+                    {
+                        sync.Write(designation?.designationManager);
+
+                        if (designation?.designationManager != null)
+                        {
+                            sync.Write(designation.target);
+                            sync.Write(designation.def);
+                        }
+                    }
+                    else
+                    {
+                        var manager = sync.Read<DesignationManager>();
+
+                        if (manager != null)
+                        {
+                            var target = sync.Read<LocalTargetInfo>();
+                            var def = sync.Read<DesignationDef>();
+
+                            // If the target has Thing, read designation by def for it.
+                            if (target.HasThing)
+                                designation = manager.DesignationOn(target.Thing, def);
+                            // If the target doesn't have a Thing then it must have a cell,
+                            // get the designation by def for that specific cell.
+                            else
+                                designation = manager.DesignationAt(target.Cell, def);
+                        }
+                    }
+                }, true // implicit
+            },
             #endregion
 
             #region ThingComps

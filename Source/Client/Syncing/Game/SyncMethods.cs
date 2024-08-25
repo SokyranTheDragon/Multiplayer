@@ -43,7 +43,7 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(Pawn_GuestTracker), nameof(Pawn_GuestTracker.ToggleNonExclusiveInteraction)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(Zone), nameof(Zone.Delete));
             SyncMethod.Register(typeof(BillStack), nameof(BillStack.AddBill)).ExposeParameter(0); // Only used for pasting
-            SyncMethod.Register(typeof(BillStack), nameof(BillStack.Delete)).CancelIfAnyArgNull();
+            SyncMethod.Register(typeof(BillStack), nameof(BillStack.Delete)).CancelIfAnyArgNull().SetPostInvoke(TryDirtyCurrentPawnTable);
             SyncMethod.Register(typeof(BillStack), nameof(BillStack.Reorder)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(Bill_Production), nameof(Bill_Production.SetStoreMode));
             SyncMethod.Register(typeof(Bill_Production), nameof(Bill_Production.SetIncludeGroup));
@@ -89,10 +89,13 @@ namespace Multiplayer.Client
                 }
             }
 
-            SyncMethod.Register(typeof(PawnColumnWorker_Designator), nameof(PawnColumnWorker_Designator.SetValue)).CancelIfAnyArgNull(); // Virtual but currently not overriden by any subclasses
+            SyncMethod.Register(typeof(DesignationManager), nameof(DesignationManager.AddDesignation)).ExposeParameter(0).SetPostInvoke(TryDirtyCurrentPawnTable); // Added designation will be freshly constructed, so we need to expose it rather than sync it
+            SyncMethod.Register(typeof(DesignationManager), nameof(DesignationManager.RemoveDesignation)).CancelIfAnyArgNull().SetPostInvoke(TryDirtyCurrentPawnTable);
+            SyncMethod.Register(typeof(PawnColumnWorker_Designator), nameof(PawnColumnWorker_Designator.DesignationConfirmed)).CancelIfAnyArgNull().SetPostInvoke(TryDirtyCurrentPawnTable); // Called from SetValue and confirmation dialog
             SyncMethod.Register(typeof(PawnColumnWorker_FollowDrafted), nameof(PawnColumnWorker_FollowDrafted.SetValue)).CancelIfAnyArgNull();
             SyncMethod.Register(typeof(PawnColumnWorker_FollowFieldwork), nameof(PawnColumnWorker_FollowFieldwork.SetValue)).CancelIfAnyArgNull();
-            SyncMethod.Register(typeof(PawnColumnWorker_Sterilize), nameof(PawnColumnWorker_Sterilize.SetValue)).CancelIfAnyArgNull(); // Will sync even without this, but this will set the column to dirty
+            SyncMethod.Register(typeof(PawnColumnWorker_Sterilize), nameof(PawnColumnWorker_Sterilize.AddSterilizeOperation)).CancelIfAnyArgNull().SetPostInvoke(TryDirtyCurrentPawnTable);
+            SyncMethod.Register(typeof(PawnColumnWorker_Sterilize), nameof(PawnColumnWorker_Sterilize.CancelSterilizeOperations)).CancelIfAnyArgNull().SetPostInvoke(TryDirtyCurrentPawnTable);
             SyncMethod.Register(typeof(CompGatherSpot), nameof(CompGatherSpot.Active));
 
             SyncMethod.Register(typeof(Building_Grave), nameof(Building_Grave.EjectContents));
@@ -367,7 +370,7 @@ namespace Multiplayer.Client
             // Previously we synced the delegate which created the bill, but it has side effects to it.
             // It can display confirmation like royal implant (no longer used?) or implanting IUD (if it would terminate pregnancy).
             // On top of that, in case of implanting the Xenogerm recipe, it will open a dialog with list of available options.
-            SyncMethod.Register(typeof(HealthCardUtility), nameof(HealthCardUtility.CreateSurgeryBill));
+            SyncMethod.Register(typeof(HealthCardUtility), nameof(HealthCardUtility.CreateSurgeryBill)).SetPostInvoke(TryDirtyCurrentPawnTable);
 
             // Comp explosive
             SyncMethod.Register(typeof(CompExplosive), nameof(CompExplosive.StartWick)); // Called from Building_BlastingCharge (and some modded) gizmos
@@ -705,6 +708,50 @@ namespace Multiplayer.Client
             var job = JobMaker.MakeJob(JobDefOf.UseVerbOnThing, verb.Caster);
             job.verbToUse = verb;
             casterPawn.jobs.StartJob(job, JobCondition.InterruptForced);
+        }
+
+        // By no longer syncing "SetValue" method for pawn column workers, the
+        // tables aren't made dirty when a value changes. This will ensure that
+        // the table is made dirty when its state changes, so it can be properly
+        // sorted. It'll also allow us to dirty the table when it normally wouldn't
+        // be in vanilla, causing the table to be re-sorted when it wouldn't be in
+        // vanilla. For example, we can cause the table to be re-sorted when something
+        // is designated outside the pawn table.
+        public static void TryDirtyCurrentPawnTable(object instance = null, object[] args = null)
+        {
+            // Make sure there's a currently open tab whose window has pawn table,
+            // and ensure the table is not null and one of the columns is sorted.
+            // Otherwise, there would be no point in making the table dirty,
+            // as it wouldn't change anything about the table.
+            if (Find.MainTabsRoot.OpenTab?.TabWindow is MainTabWindow_PawnTable { table: { SortingBy: not null } table })
+            {
+                // If the method was called on Designator or DesignationManager,
+                // set the DesignationDef from them as the instance. Instance
+                // is never Designation, so no point in getting def from it.
+                if (instance is Designator designator)
+                    instance = designator.Designation;
+                else if (instance is DesignationManager && args is { Length: > 0 } && args[0] is Designation designation)
+                    instance = designation.def;
+
+                // If the synced object is PawnColumnWorker, then we can dirty the current
+                // table based on if it's being sorted by the specific PawnColumnDef.
+                if (instance is PawnColumnWorker worker)
+                {
+                    if (table.SortingBy == worker.def)
+                        table.SetDirty();
+                }
+                // If we can get DesignationDef, we can check if the sorted column worker is
+                // designator worker and is the specific designation that
+                else if (instance is DesignationDef designation)
+                {
+                    if (table.SortingBy.Worker is PawnColumnWorker_Designator des && des.DesignationType == designation)
+                        table.SetDirty();
+                }
+                // If it's a different type, then we always dirty as we don't
+                // know if making the table dirty is required or not.
+                else
+                    table.SetDirty();
+            }
         }
     }
 

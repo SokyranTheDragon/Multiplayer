@@ -396,6 +396,8 @@ namespace Multiplayer.Client
                     designator.DesignateThing(thing);
                     designator.Finalize(true);
                 }
+
+                SyncMethods.TryDirtyCurrentPawnTable(designator);
             }
             finally
             {

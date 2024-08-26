@@ -1,5 +1,3 @@
-extern alias zip;
-
 using LiteNetLib;
 using Multiplayer.Common;
 using RimWorld;
@@ -21,13 +19,12 @@ using Multiplayer.Common.Util;
 
 namespace Multiplayer.Client
 {
-
     public class ServerBrowser : Window
     {
         private NetManager lanListener;
-        private List<LanServer> servers = new List<LanServer>();
+        private List<LanServer> servers = new();
 
-        public override Vector2 InitialSize => new Vector2(800f, 500f);
+        public override Vector2 InitialSize => new(800f, 500f);
 
         public ServerBrowser()
         {
@@ -55,15 +52,13 @@ namespace Multiplayer.Client
 
         private Vector2 lanScroll;
         private Vector2 steamScroll;
-        private Vector2 hostScroll;
+        private static Vector2 hostScroll;
         private static Tabs tab;
 
         enum Tabs
         {
             Lan, Direct, Steam, Host
         }
-
-        private WidgetRow widgetRow = new WidgetRow();
 
         public override void DoWindowContents(Rect inRect)
         {
@@ -102,8 +97,8 @@ namespace Multiplayer.Client
         {
             float x = 0;
 
-            const string WebsiteLink = "https://rimworldmultiplayer.com";
-            const string DiscordLink = "https://discord.gg/n5E2cb2Y4Z";
+            const string websiteLink = "https://rimworldmultiplayer.com";
+            const string discordLink = "https://discord.gg/n5E2cb2Y4Z";
 
             bool Button(Texture2D icon, string labelKey, string tip, Color baseIconColor, float iconSize = 24f)
             {
@@ -125,7 +120,7 @@ namespace Multiplayer.Client
 
                 using (MpStyle.Set(mouseOver ? Color.yellow : Color.white))
                 using (MpStyle.Set(TextAnchor.MiddleCenter))
-                    MpUI.Label(new Rect(x, 0, labelWidth, 24f), labelKey.Translate());
+                    Widgets.Label(new Rect(x, 0, labelWidth, 24f), labelKey.Translate());
 
                 x += labelWidth;
                 x += 10;
@@ -139,11 +134,23 @@ namespace Multiplayer.Client
             if (Button(TexButton.ToggleLog, compatLabel, MpUtil.TranslateWithDoubleNewLines(compatLabelDesc, 2), Color.grey, 20))
                 Find.WindowStack.Add(new ModCompatWindow(null, false, false, null));
 
-            if (Button(MultiplayerStatic.WebsiteIcon, "MpWebsiteButton", "MpLinkButtonDesc".Translate() + " " + WebsiteLink, Color.grey, 20))
-                Application.OpenURL(WebsiteLink);
+            if (Button(MultiplayerStatic.WebsiteIcon, "MpWebsiteButton", "MpLinkButtonDesc".Translate() + " " + websiteLink, Color.grey, 20))
+                Application.OpenURL(websiteLink);
 
-            if (Button(MultiplayerStatic.DiscordIcon, "MpDiscordButton", "MpLinkButtonDesc".Translate() + " " + DiscordLink, Color.white))
-                Application.OpenURL(DiscordLink);
+            if (Button(MultiplayerStatic.DiscordIcon, "MpDiscordButton", "MpLinkButtonDesc".Translate() + " " + discordLink, Color.white))
+                Application.OpenURL(discordLink);
+
+            x += 10;
+            Widgets.Label(new Rect(x, 0, 400, 24), "Note: Multiplayer for 1.5 is still in testing phase.");
+
+            const string v15Notice =
+                """
+                1.5 and Anomaly compatibility is a work-in-progress. Compatibility with other mods is likely going to take the longest to flesh out.
+
+                We recommend downgrading RimWorld to 1.4 if you want to continue playing a stable version.
+                """;
+
+            TooltipHandler.TipRegion(new Rect(x, 0, 400, 25), v15Notice);
 
             if (false) // todo
                 Button(
@@ -161,7 +168,7 @@ namespace Multiplayer.Client
         private void ReloadFiles()
         {
             selectedFile = null;
-            reader?.WaitTasks();
+            reader?.WaitTasks(); // Wait for the existing reader to finish
 
             reader = new SaveFileReader();
             reader.StartReading();
@@ -373,17 +380,19 @@ namespace Multiplayer.Client
                         var text = "MpSaveOutdatedDesc".Translate(data.rwVersion, VersionControl.CurrentVersionString);
                         TooltipHandler.TipRegion(outdated, text);
                     }
+                }
 
-                    Text.Font = GameFont.Small;
-                    GUI.color = Color.white;
+                Text.Font = GameFont.Small;
+                GUI.color = Color.white;
 
-                    if (Widgets.ButtonInvisible(entryRect, false))
-                    {
-                        if (Event.current.button == 0)
-                            selectedFile = file;
-                        else if (Event.current.button == 1 && data.HasRwVersion)
-                            Find.WindowStack.Add(new FloatMenu(SaveFloatMenu(data).ToList()));
-                    }
+                // Check data != null after drawing the button so draw order doesn't depend on data
+                // and IMGUI control ids are the same across frames
+                if (Widgets.ButtonInvisible(entryRect, false) && data != null)
+                {
+                    if (Event.current.button == 0)
+                        selectedFile = file;
+                    else if (Event.current.button == 1 && data.HasRwVersion)
+                        Find.WindowStack.Add(new FloatMenu(SaveFloatMenu(data).ToList()));
                 }
 
                 y += 40;
@@ -462,7 +471,7 @@ namespace Multiplayer.Client
             float height = friends.Count * 40;
             Rect viewRect = new Rect(0, 0, outRect.width - 16f, height);
 
-            Widgets.BeginScrollView(outRect, ref steamScroll, viewRect, true);
+            Widgets.BeginScrollView(outRect, ref steamScroll, viewRect);
 
             float y = 0;
             int i = 0;
@@ -617,7 +626,7 @@ namespace Multiplayer.Client
             }
         }
 
-        private long lastFriendUpdate = 0;
+        private long lastFriendUpdate;
 
         private void UpdateSteam()
         {
@@ -652,7 +661,7 @@ namespace Multiplayer.Client
                     id = friend,
                     avatar = avatar,
                     username = username,
-                    playingRimworld = playingRimworld,
+                    playingRimworld = true,
                     serverHost = serverHost,
                 });
             }
@@ -669,12 +678,12 @@ namespace Multiplayer.Client
 
         public void Cleanup(bool sync)
         {
-            WaitCallback stop = s => lanListener.Stop();
+            void Stop(object s) => lanListener.Stop();
 
             if (sync)
-                stop(null);
+                Stop(null);
             else
-                ThreadPool.QueueUserWorkItem(stop);
+                ThreadPool.QueueUserWorkItem(Stop);
         }
 
         private void AddOrUpdate(IPEndPoint endpoint)

@@ -18,7 +18,7 @@ namespace Multiplayer.Client.Persistent
 
             //If the dialog being added is a native Dialog_SplitCaravan, cancel adding it to the window stack.
             //Otherwise, window being added is something else. Let it happen.
-            return !(window is Dialog_SplitCaravan) || window is CaravanSplittingProxy;
+            return window is CaravanSplittingProxy or not Dialog_SplitCaravan;
         }
     }
 
@@ -44,9 +44,9 @@ namespace Multiplayer.Client.Persistent
             //Otherwise cancel creation of the Dialog_SplitCaravan.
             //  If there's already an active session, open the window associated with it.
             //  Otherwise, create a new session.
-            if (Multiplayer.WorldComp.splitSession != null)
+            if (Multiplayer.WorldComp.sessionManager.GetFirstOfType<CaravanSplittingSession>() is { } session)
             {
-                Multiplayer.WorldComp.splitSession.OpenWindow(true);
+                session.OpenWindow();
             }
             else
             {
@@ -65,10 +65,7 @@ namespace Multiplayer.Client.Persistent
         public static void CreateSplittingSession(Caravan caravan)
         {
             //Start caravan splitting session here by calling new session constructor
-            if (Multiplayer.WorldComp.splitSession == null)
-            {
-                Multiplayer.WorldComp.splitSession = new CaravanSplittingSession(caravan);
-            }
+            Multiplayer.WorldComp.sessionManager.AddSession(new CaravanSplittingSession(caravan));
         }
     }
 }

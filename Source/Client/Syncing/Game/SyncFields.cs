@@ -17,7 +17,6 @@ namespace Multiplayer.Client
         public static ISyncField SyncHostilityResponse;
         public static ISyncField SyncFollowDrafted;
         public static ISyncField SyncFollowFieldwork;
-        public static ISyncField SyncInteractionMode;
         public static ISyncField SyncSlaveInteractionMode;
         public static ISyncField SyncIdeoForConversion;
         public static ISyncField SyncBeCarried;
@@ -25,7 +24,6 @@ namespace Multiplayer.Client
         public static ISyncField SyncPsychicEntropyTargetFocus;
         public static ISyncField SyncGuiltAwaitingExecution;
 
-        public static ISyncField SyncGodMode;
         public static ISyncField SyncUseWorkPriorities;
         public static ISyncField SyncAutoHomeArea;
         public static ISyncField SyncAutoRebuild;
@@ -35,14 +33,14 @@ namespace Multiplayer.Client
         public static ISyncField SyncFactionAcceptRoyalFavor;
         public static ISyncField SyncFactionAcceptGoodwill;
 
-        public static SyncField[] SyncThingFilterHitPoints;
-        public static SyncField[] SyncThingFilterQuality;
+        public static ISyncField SyncThingFilterHitPoints;
+        public static ISyncField SyncThingFilterQuality;
 
+        public static ISyncField SyncBillPaused;
         public static ISyncField SyncBillSuspended;
         public static ISyncField SyncIngredientSearchRadius;
         public static ISyncField SyncBillSkillRange;
 
-        public static ISyncField SyncBillIncludeZone;
         public static ISyncField SyncBillIncludeHpRange;
         public static ISyncField SyncBillIncludeQualityRange;
         public static ISyncField SyncBillPawnRestriction;
@@ -51,8 +49,6 @@ namespace Multiplayer.Client
         public static ISyncField SyncBillMechsOnly;
         public static ISyncField SyncBillNonMechsOnly;
 
-        public static ISyncField SyncZoneLabel;
-
         public static SyncField[] SyncBillProduction;
         public static SyncField[] SyncBillIncludeCriteria;
 
@@ -60,14 +56,6 @@ namespace Multiplayer.Client
         public static SyncField[] SyncDrugPolicyEntryBuffered;
 
         public static ISyncField SyncTradeableCount;
-
-        // 1
-        public static ISyncField SyncBillPaused;
-
-        // 2
-        public static ISyncField SyncOutfitLabel;
-        public static ISyncField SyncDrugPolicyLabel;
-        public static ISyncField SyncFoodRestrictionLabel;
 
         public static ISyncField SyncStorytellerDef;
         public static ISyncField SyncStorytellerDifficultyDef;
@@ -79,7 +67,6 @@ namespace Multiplayer.Client
 
         public static ISyncField SyncDryadCaste;
         public static ISyncField SyncDesiredTreeConnectionStrength;
-        public static ISyncField SyncPlantCells;
 
         public static ISyncField SyncNeuralSuperchargerMode;
 
@@ -95,121 +82,121 @@ namespace Multiplayer.Client
         public static ISyncField SyncMechCarrierGizmoTargetValue;
         public static ISyncField SyncMechCarrierMaxToFill;
 
+        public static ISyncField SyncStudiableCompEnabled;
+        public static ISyncField SyncEntityContainmentMode;
+        public static ISyncField SyncExtractBioferrite;
+
+        public static ISyncField SyncActivityGizmoTarget;
+        public static ISyncField SyncActivityCompTarget;
+        public static ISyncField SyncActivityCompSuppression;
+
         public static void Init()
         {
-            SyncMedCare = Sync.Field(typeof(Pawn), "playerSettings", "medCare");
-            SyncSelfTend = Sync.Field(typeof(Pawn), "playerSettings", "selfTend");
-            SyncHostilityResponse = Sync.Field(typeof(Pawn), "playerSettings", "hostilityResponse");
-            SyncFollowDrafted = Sync.Field(typeof(Pawn), "playerSettings", "followDrafted");
-            SyncFollowFieldwork = Sync.Field(typeof(Pawn), "playerSettings", "followFieldwork");
-            SyncInteractionMode = Sync.Field(typeof(Pawn), "guest", "interactionMode");
+            SyncMedCare = Sync.Field(typeof(Pawn), nameof(Pawn.playerSettings), nameof(Pawn_PlayerSettings.medCare));
+            SyncSelfTend = Sync.Field(typeof(Pawn), nameof(Pawn.playerSettings), nameof(Pawn_PlayerSettings.selfTend));
+            SyncHostilityResponse = Sync.Field(typeof(Pawn), nameof(Pawn.playerSettings), nameof(Pawn_PlayerSettings.hostilityResponse));
+            SyncFollowDrafted = Sync.Field(typeof(Pawn), nameof(Pawn.playerSettings), nameof(Pawn_PlayerSettings.followDrafted));
+            SyncFollowFieldwork = Sync.Field(typeof(Pawn), nameof(Pawn.playerSettings), nameof(Pawn_PlayerSettings.followFieldwork));
             SyncSlaveInteractionMode = Sync.Field(typeof(Pawn), nameof(Pawn.guest), nameof(Pawn_GuestTracker.slaveInteractionMode));
             SyncIdeoForConversion = Sync.Field(typeof(Pawn), nameof(Pawn.guest), nameof(Pawn_GuestTracker.ideoForConversion));
-            SyncBeCarried = Sync.Field(typeof(Pawn), "health", "beCarriedByCaravanIfSick");
-            SyncPsychicEntropyLimit = Sync.Field(typeof(Pawn), "psychicEntropy", "limitEntropyAmount");
-            SyncPsychicEntropyTargetFocus = Sync.Field(typeof(Pawn), "psychicEntropy", "targetPsyfocus").SetBufferChanges();
+            SyncBeCarried = Sync.Field(typeof(Pawn), nameof(Pawn.health), nameof(Pawn_HealthTracker.beCarriedByCaravanIfSick));
+            SyncPsychicEntropyLimit = Sync.Field(typeof(Pawn), nameof(Pawn.psychicEntropy), nameof(Pawn_PsychicEntropyTracker.limitEntropyAmount));
+            SyncPsychicEntropyTargetFocus = Sync.Field(typeof(Pawn), nameof(Pawn.psychicEntropy), nameof(Pawn_PsychicEntropyTracker.targetPsyfocus)).SetBufferChanges();
             SyncGuiltAwaitingExecution = Sync.Field(typeof(Pawn), nameof(Pawn.guilt), nameof(Pawn_GuiltTracker.awaitingExecution));
 
-            SyncUseWorkPriorities = Sync.Field(null, "Verse.Current/Game/playSettings", "useWorkPriorities").PostApply(UseWorkPriorities_PostApply);
-            SyncAutoHomeArea = Sync.Field(null, "Verse.Current/Game/playSettings", "autoHomeArea");
-            SyncAutoRebuild = Sync.Field(null, "Verse.Current/Game/playSettings", "autoRebuild");
+            SyncUseWorkPriorities = Sync.Field(null, $"Verse.Current/Game/playSettings", nameof(PlaySettings.useWorkPriorities)).PostApply(UseWorkPriorities_PostApply);
+            SyncAutoHomeArea = Sync.Field(null, "Verse.Current/Game/playSettings", nameof(PlaySettings.autoHomeArea));
+            SyncAutoRebuild = Sync.Field(null, "Verse.Current/Game/playSettings", nameof(PlaySettings.autoRebuild));
 
             SyncDefaultCare = Sync.Fields(
                 null,
                 "Verse.Current/Game/playSettings",
-                nameof(PlaySettings.defaultCareForColonyHumanlike),
-                nameof(PlaySettings.defaultCareForColonyPrisoner),
-                nameof(PlaySettings.defaultCareForColonySlave),
-                nameof(PlaySettings.defaultCareForColonyAnimal),
-                nameof(PlaySettings.defaultCareForNeutralAnimal),
+                nameof(PlaySettings.defaultCareForColonist),
+                nameof(PlaySettings.defaultCareForEntities),
+                nameof(PlaySettings.defaultCareForGhouls),
+                nameof(PlaySettings.defaultCareForPrisoner),
+                nameof(PlaySettings.defaultCareForSlave),
+                nameof(PlaySettings.defaultCareForFriendlyFaction),
                 nameof(PlaySettings.defaultCareForNeutralFaction),
-                nameof(PlaySettings.defaultCareForHostileFaction)
+                nameof(PlaySettings.defaultCareForHostileFaction),
+                nameof(PlaySettings.defaultCareForWildlife),
+                nameof(PlaySettings.defaultCareForNoFaction),
+                nameof(PlaySettings.defaultCareForTamedAnimal)
             ).SetBufferChanges();
 
             SyncQuestDismissed = Sync.Field(typeof(Quest), nameof(Quest.dismissed));
             SyncFactionAcceptRoyalFavor = Sync.Field(typeof(Faction), nameof(Faction.allowRoyalFavorRewards));
             SyncFactionAcceptGoodwill = Sync.Field(typeof(Faction), nameof(Faction.allowGoodwillRewards));
 
-            var thingFilterTarget = new MultiTarget() { { SyncThingFilters.ThingFilterTarget, "Filter" } };
-            SyncThingFilterHitPoints = Sync.FieldMultiTarget(thingFilterTarget, "AllowedHitPointsPercents").SetBufferChanges();
-            SyncThingFilterQuality = Sync.FieldMultiTarget(thingFilterTarget, "AllowedQualityLevels").SetBufferChanges();
+            SyncThingFilterHitPoints = Sync.Field(typeof(ThingFilterContext), "Filter/AllowedHitPointsPercents").SetBufferChanges();
+            SyncThingFilterQuality = Sync.Field(typeof(ThingFilterContext), "Filter/AllowedQualityLevels").SetBufferChanges();
 
-            SyncBillSuspended = Sync.Field(typeof(Bill), "suspended");
-            SyncIngredientSearchRadius = Sync.Field(typeof(Bill), "ingredientSearchRadius").SetBufferChanges();
-            SyncBillSkillRange = Sync.Field(typeof(Bill), "allowedSkillRange").SetBufferChanges();
+            SyncBillPaused = Sync.Field(typeof(Bill_Production), nameof(Bill_Production.paused)).SetBufferChanges();
+            SyncBillSuspended = Sync.Field(typeof(Bill), nameof(Bill.suspended));
+            SyncIngredientSearchRadius = Sync.Field(typeof(Bill), nameof(Bill.ingredientSearchRadius)).SetBufferChanges();
+            SyncBillSkillRange = Sync.Field(typeof(Bill), nameof(Bill.allowedSkillRange)).SetBufferChanges();
 
-            SyncBillIncludeZone = Sync.Field(typeof(Bill_Production), "includeFromZone");
-            SyncBillIncludeHpRange = Sync.Field(typeof(Bill_Production), "hpRange").SetBufferChanges();
-            SyncBillIncludeQualityRange = Sync.Field(typeof(Bill_Production), "qualityRange").SetBufferChanges();
-            SyncBillPawnRestriction = Sync.Field(typeof(Bill), "pawnRestriction");
+            SyncBillIncludeHpRange = Sync.Field(typeof(Bill_Production), nameof(Bill_Production.hpRange)).SetBufferChanges();
+            SyncBillIncludeQualityRange = Sync.Field(typeof(Bill_Production), nameof(Bill_Production.qualityRange)).SetBufferChanges();
+            SyncBillPawnRestriction = Sync.Field(typeof(Bill), nameof(Bill.pawnRestriction));
 
             SyncBillSlavesOnly = Sync.Field(typeof(Bill), nameof(Bill.slavesOnly));
             SyncBillMechsOnly = Sync.Field(typeof(Bill), nameof(Bill.mechsOnly));
             SyncBillNonMechsOnly = Sync.Field(typeof(Bill), nameof(Bill.nonMechsOnly));
 
-            SyncZoneLabel = Sync.Field(typeof(Zone), "label");
-
             SyncBillProduction = Sync.Fields(
                 typeof(Bill_Production),
                 null,
-                "repeatMode",
-                "repeatCount",
-                "targetCount",
-                "pauseWhenSatisfied",
-                "unpauseWhenYouHave"
+                nameof(Bill_Production.repeatMode),
+                nameof(Bill_Production.repeatCount),
+                nameof(Bill_Production.targetCount),
+                nameof(Bill_Production.pauseWhenSatisfied),
+                nameof(Bill_Production.unpauseWhenYouHave)
             );
 
             SyncBillIncludeCriteria = Sync.Fields(
                 typeof(Bill_Production),
                 null,
-                "includeEquipped",
-                "includeTainted",
-                "limitToAllowedStuff"
+                nameof(Bill_Production.includeEquipped),
+                nameof(Bill_Production.includeTainted),
+                nameof(Bill_Production.limitToAllowedStuff)
             );
 
             SyncDrugPolicyEntry = Sync.Fields(
                 typeof(DrugPolicy),
-                "entriesInt/[]",
-                "allowedForAddiction",
-                "allowedForJoy",
-                "allowScheduled",
-                "takeToInventory"
+                $"{nameof(DrugPolicy.entriesInt)}/[]",
+                nameof(DrugPolicyEntry.allowedForAddiction),
+                nameof(DrugPolicyEntry.allowedForJoy),
+                nameof(DrugPolicyEntry.allowScheduled),
+                nameof(DrugPolicyEntry.takeToInventory)
             );
 
             SyncDrugPolicyEntryBuffered = Sync.Fields(
                 typeof(DrugPolicy),
-                "entriesInt/[]",
-                "daysFrequency",
-                "onlyIfMoodBelow",
-                "onlyIfJoyBelow"
+                $"{nameof(DrugPolicy.entriesInt)}/[]",
+                nameof(DrugPolicyEntry.daysFrequency),
+                nameof(DrugPolicyEntry.onlyIfMoodBelow),
+                nameof(DrugPolicyEntry.onlyIfJoyBelow)
             ).SetBufferChanges();
 
             // This depends on the order of AutoSlaughterManager.configs being the same on all clients
             // The array is initialized using DefDatabase<ThingDef>.AllDefs which shouldn't cause problems though
             SyncAutoSlaughter = Sync.Fields(
                 typeof(AutoSlaughterManager),
-                "configs/[]",
-                "maxTotal",
-                "maxMales",
-                "maxMalesYoung",
-                "maxFemales",
-                "maxFemalesYoung",
-                "allowSlaughterPregnant"
+                $"{nameof(AutoSlaughterManager.configs)}/[]",
+                nameof(AutoSlaughterConfig.maxTotal),
+                nameof(AutoSlaughterConfig.maxMales),
+                nameof(AutoSlaughterConfig.maxMalesYoung),
+                nameof(AutoSlaughterConfig.maxFemales),
+                nameof(AutoSlaughterConfig.maxFemalesYoung),
+                nameof(AutoSlaughterConfig.allowSlaughterPregnant)
             ).PostApply(Autoslaughter_PostApply);
 
-            SyncTradeableCount = Sync.Field(typeof(MpTransferableReference), "CountToTransfer").SetBufferChanges().PostApply(TransferableCount_PostApply);
+            SyncTradeableCount = Sync.Field(typeof(MpTransferableReference), nameof(MpTransferableReference.CountToTransfer)).SetBufferChanges().PostApply(TransferableCount_PostApply);
 
-            // 1
-            SyncBillPaused = Sync.Field(typeof(Bill_Production), nameof(Bill_Production.paused)).SetBufferChanges().SetVersion(1);
-
-            // 2
-            SyncOutfitLabel = Sync.Field(typeof(Outfit), "label").SetBufferChanges().SetVersion(2);
-            SyncDrugPolicyLabel = Sync.Field(typeof(DrugPolicy), "label").SetBufferChanges().SetVersion(2);
-            SyncFoodRestrictionLabel = Sync.Field(typeof(FoodRestriction), "label").SetBufferChanges().SetVersion(2);
-
-            SyncStorytellerDef = Sync.Field(typeof(Storyteller), "def").SetHostOnly().PostApply(StorytellerDef_Post).SetVersion(2);
-            SyncStorytellerDifficultyDef = Sync.Field(typeof(Storyteller), "difficultyDef").SetHostOnly().PostApply(StorytellerDifficultyDef_Post).SetVersion(2);
-            SyncStorytellerDifficulty = Sync.Field(typeof(Storyteller), "difficulty").ExposeValue().SetHostOnly().PostApply(StorytellerDifficulty_Post).SetVersion(2);
+            SyncStorytellerDef = Sync.Field(typeof(Storyteller), nameof(Storyteller.def)).SetHostOnly().PostApply(StorytellerDef_Post);
+            SyncStorytellerDifficultyDef = Sync.Field(typeof(Storyteller), nameof(Storyteller.difficultyDef)).SetHostOnly().PostApply(StorytellerDifficultyDef_Post);
+            SyncStorytellerDifficulty = Sync.Field(typeof(Storyteller), nameof(Storyteller.difficulty)).ExposeValue().SetHostOnly().PostApply(StorytellerDifficulty_Post);
 
             SyncDryadCaste = Sync.Field(typeof(CompTreeConnection), nameof(CompTreeConnection.desiredMode));
             SyncDesiredTreeConnectionStrength = Sync.Field(typeof(CompTreeConnection), nameof(CompTreeConnection.desiredConnectionStrength));
@@ -229,6 +216,14 @@ namespace Multiplayer.Client
             SyncMechAutoRepair = Sync.Field(typeof(CompMechRepairable), nameof(CompMechRepairable.autoRepair));
             SyncMechCarrierGizmoTargetValue = Sync.Field(typeof(MechCarrierGizmo), nameof(MechCarrierGizmo.targetValue)).SetBufferChanges();
             SyncMechCarrierMaxToFill = Sync.Field(typeof(CompMechCarrier), nameof(CompMechCarrier.maxToFill)).SetBufferChanges();
+
+            SyncStudiableCompEnabled = Sync.Field(typeof(CompStudiable), nameof(CompStudiable.studyEnabled));
+            SyncEntityContainmentMode = Sync.Field(typeof(CompHoldingPlatformTarget), nameof(CompHoldingPlatformTarget.containmentMode));
+            SyncExtractBioferrite = Sync.Field(typeof(CompHoldingPlatformTarget), nameof(CompHoldingPlatformTarget.extractBioferrite));
+
+            SyncActivityGizmoTarget = Sync.Field(typeof(ActivityGizmo), nameof(ActivityGizmo.targetValuePct)).SetBufferChanges();
+            SyncActivityCompTarget = Sync.Field(typeof(CompActivity), nameof(CompActivity.suppressIfAbove)).SetBufferChanges();
+            SyncActivityCompSuppression = Sync.Field(typeof(CompActivity), nameof(CompActivity.suppressionEnabled));
         }
 
         [MpPrefix(typeof(StorytellerUI), nameof(StorytellerUI.DrawStorytellerSelectionInterface))]
@@ -262,8 +257,8 @@ namespace Multiplayer.Client
                 comp.storyteller.difficulty = Find.Storyteller.difficulty;
         }
 
-        [MpPrefix(typeof(HealthCardUtility), "DrawOverviewTab")]
-        static void HealthCardUtility(Pawn pawn)
+        [MpPrefix(typeof(HealthCardUtility), nameof(HealthCardUtility.DrawOverviewTab))]
+        static void HealthCardUtility_Patch(Pawn pawn)
         {
             if (pawn.playerSettings != null)
             {
@@ -272,12 +267,11 @@ namespace Multiplayer.Client
             }
         }
 
-        [MpPrefix(typeof(ITab_Pawn_Visitor), "FillTab")]
-        static void ITab_Pawn_Visitor(ITab __instance)
+        [MpPrefix(typeof(ITab_Pawn_Visitor), nameof(ITab_Pawn_Visitor.FillTab))]
+        static void ITab_Pawn_Visitor_Patch(ITab __instance)
         {
             Pawn pawn = __instance.SelPawn;
             SyncMedCare.Watch(pawn);
-            SyncInteractionMode.Watch(pawn);
             SyncSlaveInteractionMode.Watch(pawn);
             SyncIdeoForConversion.Watch(pawn);
         }
@@ -322,12 +316,6 @@ namespace Multiplayer.Client
             return WatchDropdowns(() => SyncMedCare.Watch(p), __result);
         }
 
-        [MpPostfix(typeof(Dialog_BillConfig), nameof(Dialog_BillConfig.GenerateStockpileInclusion))]
-        static IEnumerable<DropdownMenuElement<Zone_Stockpile>> BillIncludeZone_Postfix(IEnumerable<DropdownMenuElement<Zone_Stockpile>> __result, Bill ___bill)
-        {
-            return WatchDropdowns(() => SyncBillIncludeZone.Watch(___bill), __result);
-        }
-
         [MpPrefix(typeof(TrainingCardUtility), nameof(TrainingCardUtility.DrawTrainingCard))]
         static void PawnSettingFollowWatch(Pawn pawn)
         {
@@ -335,7 +323,7 @@ namespace Multiplayer.Client
             SyncFollowFieldwork.Watch(pawn);
         }
 
-        [MpPrefix(typeof(Dialog_MedicalDefaults), "DoWindowContents")]
+        [MpPrefix(typeof(Dialog_MedicalDefaults), nameof(Dialog_MedicalDefaults.DoWindowContents))]
         static void MedicalDefaults()
         {
             SyncDefaultCare.Watch();
@@ -350,7 +338,7 @@ namespace Multiplayer.Client
             }
         }
 
-        [MpPrefix(typeof(Widgets), "CheckboxLabeled")]
+        [MpPrefix(typeof(Widgets), nameof(Widgets.CheckboxLabeled))]
         static void CheckboxLabeled()
         {
             // Watched here to get reset asap and not trigger any side effects
@@ -358,26 +346,28 @@ namespace Multiplayer.Client
                 SyncUseWorkPriorities.Watch();
         }
 
-        [MpPrefix(typeof(PlaySettings), "DoPlaySettingsGlobalControls")]
+        [MpPrefix(typeof(PlaySettings), nameof(PlaySettings.DoPlaySettingsGlobalControls))]
         static void PlaySettingsControls()
         {
             SyncAutoHomeArea.Watch();
             SyncAutoRebuild.Watch();
         }
 
-        [MpPrefix(typeof(ThingFilterUI), "DrawHitPointsFilterConfig")]
+        [MpPrefix(typeof(ThingFilterUI), nameof(ThingFilterUI.DrawHitPointsFilterConfig))]
         static void ThingFilterHitPoints()
         {
-            SyncThingFilterHitPoints.Watch(SyncMarkers.DrawnThingFilter);
+            if (ThingFilterMarkers.DrawnThingFilter != null)
+                SyncThingFilterHitPoints.Watch(ThingFilterMarkers.DrawnThingFilter);
         }
 
-        [MpPrefix(typeof(ThingFilterUI), "DrawQualityFilterConfig")]
+        [MpPrefix(typeof(ThingFilterUI), nameof(ThingFilterUI.DrawQualityFilterConfig))]
         static void ThingFilterQuality()
         {
-            SyncThingFilterQuality.Watch(SyncMarkers.DrawnThingFilter);
+            if (ThingFilterMarkers.DrawnThingFilter != null)
+                SyncThingFilterQuality.Watch(ThingFilterMarkers.DrawnThingFilter);
         }
 
-        [MpPrefix(typeof(Bill), "DoInterface")]
+        [MpPrefix(typeof(Bill), nameof(Bill.DoInterface))]
         static void BillInterfaceCard(Bill __instance)
         {
             SyncBillSuspended.Watch(__instance);
@@ -387,7 +377,7 @@ namespace Multiplayer.Client
             SyncBillProduction.Watch(__instance);
         }
 
-        [MpPrefix(typeof(Dialog_BillConfig), "DoWindowContents")]
+        [MpPrefix(typeof(Dialog_BillConfig), nameof(Dialog_BillConfig.DoWindowContents))]
         static void DialogBillConfig(Dialog_BillConfig __instance)
         {
             Bill_Production bill = __instance.bill;
@@ -414,7 +404,7 @@ namespace Multiplayer.Client
             SyncBillProduction.Watch(__instance.GetPropertyOrField("bill"));
         }
 
-        [MpPrefix(typeof(ITab_Bills), "TabUpdate")]
+        [MpPrefix(typeof(ITab_Bills), nameof(ITab_Bills.TabUpdate))]
         static void BillIngredientSearchRadius(ITab_Bills __instance)
         {
             // Apply the buffered value for smooth rendering
@@ -423,13 +413,13 @@ namespace Multiplayer.Client
                 SyncIngredientSearchRadius.Watch(mouseover);
         }
 
-        [MpPrefix(typeof(Dialog_BillConfig), "WindowUpdate")]
+        [MpPrefix(typeof(Dialog_BillConfig), nameof(Dialog_BillConfig.WindowUpdate))]
         static void BillIngredientSearchRadius(Dialog_BillConfig __instance)
         {
             SyncIngredientSearchRadius.Watch(__instance.bill);
         }
 
-        [MpPrefix(typeof(Dialog_ManageDrugPolicies), "DoPolicyConfigArea")]
+        [MpPrefix(typeof(Dialog_ManageDrugPolicies), nameof(Dialog_ManageDrugPolicies.DoPolicyConfigArea))]
         static void DialogManageDrugPolicies(Dialog_ManageDrugPolicies __instance)
         {
             DrugPolicy policy = __instance.SelectedPolicy;
@@ -440,19 +430,11 @@ namespace Multiplayer.Client
             }
         }
 
-        [MpPrefix(typeof(Dialog_RenameZone), "SetName")]
-        static void RenameZone(Dialog_RenameZone __instance)
-        {
-            SyncZoneLabel.Watch(__instance.zone);
-        }
 
-        [MpPrefix(typeof(TransferableUIUtility), "DoCountAdjustInterface")]
+        [MpPrefix(typeof(TransferableUIUtility), nameof(TransferableUIUtility.DoCountAdjustInterface))]
         static void TransferableAdjustTo(Transferable trad)
         {
-            var session = MpTradeSession.current ??
-                (Multiplayer.Client != null ? Multiplayer.WorldComp.splitSession : null) ??
-                (ISessionWithTransferables)CaravanFormingProxy.drawing?.Session ??
-                TransporterLoadingProxy.drawing?.Session;
+            var session = SyncSessionWithTransferablesMarker.DrawnSessionWithTransferables;
             if (session != null)
                 SyncTradeableCount.Watch(new MpTransferableReference(session, trad));
         }
@@ -476,9 +458,9 @@ namespace Multiplayer.Client
         }
 
         [MpPrefix(typeof(Dialog_AutoSlaughter), nameof(Dialog_AutoSlaughter.DoAnimalRow))]
-        static void Dialog_AutoSlaughter_Row(Map map, AutoSlaughterConfig config)
+        static void Dialog_AutoSlaughter_Row(Dialog_AutoSlaughter __instance, AutoSlaughterConfig config)
         {
-            SyncAutoSlaughter.Watch(map.autoSlaughterManager, map.autoSlaughterManager.configs.IndexOf(config));
+            SyncAutoSlaughter.Watch(__instance.map.autoSlaughterManager, __instance.map.autoSlaughterManager.configs.IndexOf(config));
         }
 
         [MpPrefix(typeof(Bill), nameof(Bill.DoInterface))]
@@ -487,21 +469,6 @@ namespace Multiplayer.Client
         {
             if (__instance is Bill_Production)
                 SyncBillPaused.Watch(__instance);
-        }
-
-        [MpPrefix(typeof(Dialog_ManageOutfits), "DoNameInputRect")]
-        [MpPrefix(typeof(Dialog_ManageDrugPolicies), "DoNameInputRect")]
-        [MpPrefix(typeof(Dialog_ManageFoodRestrictions), "DoNameInputRect")]
-        static void WatchPolicyLabels()
-        {
-            if (SyncMarkers.dialogOutfit != null)
-                SyncOutfitLabel.Watch(SyncMarkers.dialogOutfit.Outfit);
-
-            if (SyncMarkers.drugPolicy != null)
-                SyncDrugPolicyLabel.Watch(SyncMarkers.drugPolicy);
-
-            if (SyncMarkers.foodRestriction != null)
-                SyncFoodRestrictionLabel.Watch(SyncMarkers.foodRestriction.Food);
         }
 
         static void UseWorkPriorities_PostApply(object target, object value)
@@ -561,13 +528,25 @@ namespace Multiplayer.Client
             SyncGuiltAwaitingExecution.Watch(pawn);
         }
 
-        [MpPrefix(typeof(GeneGizmo_Resource), nameof(GeneGizmo_Resource.GizmoOnGUI))]
-        static void SyncGeneResourceChange(GeneGizmo_Resource __instance)
+        [MpPrefix(typeof(Gizmo_Slider), nameof(Gizmo_Slider.GizmoOnGUI))]
+        static void SyncGeneResourceChange(Gizmo_Slider __instance)
         {
-            SyncGeneGizmoResource.Watch(__instance);
-            SyncGeneResource.Watch(__instance.gene);
-            if (__instance.gene is Gene_Hemogen)
-                SyncGeneHemogenAllowed.Watch(__instance.gene);
+            if (__instance is GeneGizmo_Resource geneGizmo)
+            {
+                SyncGeneGizmoResource.Watch(geneGizmo);
+                SyncGeneResource.Watch(geneGizmo.gene);
+
+                if (geneGizmo.gene is Gene_Hemogen)
+                    SyncGeneHemogenAllowed.Watch(geneGizmo.gene);
+            }
+            else if (__instance is ActivityGizmo activityGizmo)
+            {
+                SyncActivityGizmoTarget.Watch(activityGizmo);
+
+                var comp = activityGizmo.Comp;
+                SyncActivityCompTarget.Watch(comp);
+                SyncActivityCompSuppression.Watch(comp);
+            }
         }
 
         [MpPrefix(typeof(ITab_ContentsGenepackHolder), nameof(ITab_ContentsGenepackHolder.DoItemsLists))]
@@ -601,6 +580,25 @@ namespace Multiplayer.Client
         {
             SyncMechCarrierGizmoTargetValue.Watch(__instance);
             SyncMechCarrierMaxToFill.Watch(__instance.carrier);
+        }
+
+        [MpPrefix(typeof(ITab_StudyNotes), nameof(ITab_StudyNotes.DrawTitle))]
+        static void CompStudiableEnabledCheckbox(ITab_StudyNotes __instance)
+        {
+            var comp = __instance.StudiableThing.TryGetComp<CompStudiable>();
+            if (comp != null)
+                SyncStudiableCompEnabled.Watch(comp);
+        }
+
+        [MpPrefix(typeof(ITab_Entity), nameof(ITab_Entity.FillTab))]
+        static void CompHoldingPlatformTargetMode(ITab_Entity __instance)
+        {
+            var comp = __instance.SelPawn.TryGetComp<CompHoldingPlatformTarget>();
+            if (comp != null)
+            {
+                SyncEntityContainmentMode.Watch(comp);
+                SyncExtractBioferrite.Watch(comp);
+            }
         }
     }
 

@@ -2,6 +2,8 @@ using HarmonyLib;
 using RimWorld;
 using RimWorld.Planet;
 using System;
+using Multiplayer.API;
+using Multiplayer.Client.Patches;
 using UnityEngine;
 using Verse;
 using static Verse.Widgets;
@@ -27,7 +29,7 @@ namespace Multiplayer.Client.Persistent
             GUI.color = Color.white;
             if (__result)
             {
-                CaravanFormingProxy.drawing.Session?.Remove();
+                CaravanFormingProxy.drawing.Session?.Cancel();
                 __result = false;
             }
         }
@@ -59,7 +61,6 @@ namespace Multiplayer.Client.Persistent
     [HarmonyPatch(typeof(Dialog_FormCaravan), nameof(Dialog_FormCaravan.DrawAutoSelectCheckbox))]
     static class DrawAutoSelectCheckboxPatch
     {
-        // TODO: Sync autoSelectFoodAndMedicine
         // This is merely hiding it and enabling manual transfer as a side effect.
         static bool Prefix(Dialog_FormCaravan __instance, Rect rect)
         {
@@ -148,7 +149,7 @@ namespace Multiplayer.Client.Persistent
     {
         static bool Prefix(Window window)
         {
-            if (Multiplayer.MapContext != null && window.GetType() == typeof(Dialog_FormCaravan))
+            if (Multiplayer.Client != null && window.GetType() == typeof(Dialog_FormCaravan))
                 return false;
 
             return true;
@@ -156,20 +157,76 @@ namespace Multiplayer.Client.Persistent
     }
 
     [HarmonyPatch(typeof(Dialog_FormCaravan), MethodType.Constructor)]
-    [HarmonyPatch(new[] { typeof(Map), typeof(bool), typeof(Action), typeof(bool), typeof(IntVec3) })]
+    [HarmonyPatch(new[] { typeof(Map), typeof(bool), typeof(Action), typeof(bool), typeof(IntVec3?) })]
     static class DialogFormCaravanCtorPatch
     {
-        static void Prefix(Dialog_FormCaravan __instance, Map map, bool reform, Action onClosed, bool mapAboutToBeRemoved)
+        static void Prefix(Dialog_FormCaravan __instance, Map map, bool reform, Action onClosed, bool mapAboutToBeRemoved, IntVec3? designatedMeetingPoint)
         {
+            if (Multiplayer.Client == null)
+                return;
+
             if (__instance.GetType() != typeof(Dialog_FormCaravan))
                 return;
 
+            // Handles showing the dialog from TimedForcedExit.CompTick -> TimedForcedExit.ForceReform
+            // (note TimedForcedExit is obsolete)
             if (Multiplayer.ExecutingCmds || Multiplayer.Ticking)
             {
                 var comp = map.MpComp();
-                if (comp.caravanForming == null)
-                    comp.CreateCaravanFormingSession(reform, onClosed, mapAboutToBeRemoved);
+                if (comp.sessionManager.GetFirstOfType<CaravanFormingSession>() == null)
+                    comp.CreateCaravanFormingSession(reform, onClosed, mapAboutToBeRemoved, designatedMeetingPoint);
             }
+            else // Handles opening from the interface: forming gizmos, reforming gizmos and caravan hitching spots
+            {
+                StartFormingCaravan(map, reform, designatedMeetingPoint);
+            }
+        }
+
+        [SyncMethod]
+        internal static void StartFormingCaravan(Map map, bool reform = false, IntVec3? designatedMeetingPoint = null, int? routePlannerWaypoint = null)
+        {
+            var comp = map.MpComp();
+            var session = comp.CreateCaravanFormingSession(reform, null, false, designatedMeetingPoint);
+
+            if (TickPatch.currentExecutingCmdIssuedBySelf)
+            {
+                var dialog = session.OpenWindow();
+                if (routePlannerWaypoint is { } tile)
+                {
+                    try
+                    {
+                        UniqueIdsPatch.useLocalIdsOverride = true;
+
+                        // Just to be safe
+                        // RNG shouldn't be invoked but TryAddWaypoint is quite complex and calls pathfinding
+                        Rand.PushState();
+
+                        var worldRoutePlanner = Find.WorldRoutePlanner;
+                        worldRoutePlanner.Start(dialog);
+                        worldRoutePlanner.TryAddWaypoint(tile);
+                    }
+                    finally
+                    {
+                        Rand.PopState();
+                        UniqueIdsPatch.useLocalIdsOverride = false;
+                    }
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(FormCaravanGizmoUtility), nameof(FormCaravanGizmoUtility.DialogFromToSettlement))]
+    static class HandleFormCaravanShowRoutePlanner
+    {
+        static bool Prefix(Map origin, int tile)
+        {
+            if (Multiplayer.Client == null)
+                return true;
+
+            // Override behavior in multiplayer
+            DialogFormCaravanCtorPatch.StartFormingCaravan(origin, routePlannerWaypoint: tile);
+
+            return false;
         }
     }
 

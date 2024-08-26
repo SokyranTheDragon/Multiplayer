@@ -12,7 +12,6 @@ using Verse.Sound;
 
 namespace Multiplayer.Client
 {
-
     public class ModCompatWindow : Window
     {
         public override Vector2 InitialSize => popup ? new(600, 450) : new(900, 600);
@@ -323,7 +322,7 @@ namespace Multiplayer.Client
         public override void PostClose()
         {
             base.PostClose();
-            Multiplayer.WriteSettingsToDisk();
+            Multiplayer.settings.Write();
         }
 
         private void RecacheMods()
@@ -354,7 +353,7 @@ namespace Multiplayer.Client
             modsActive = Order(ModsConfig.ActiveModsInLoadOrder, sort).ToList();
 
             modsInstalled = Order(
-                ModLister.AllInstalledMods.Where(m => !m.Active && m.VersionCompatible),
+                ModLister.AllInstalledMods.Where(m => !m.Active && m.VersionCompatible).OrderBy(m => m.Name),
                 forceNameSort && sort.d == SortDirection.None ? (SortType.Name, SortDirection.Ascending) : sort
             ).ToList();
 

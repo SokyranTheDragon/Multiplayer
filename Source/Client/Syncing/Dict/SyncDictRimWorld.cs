@@ -10,7 +10,7 @@ using Verse;
 using Verse.AI;
 using Verse.AI.Group;
 using static Multiplayer.Client.SyncSerialization;
-using static Multiplayer.Client.ImplSerialization;
+using static Multiplayer.Client.CompSerialization;
 // ReSharper disable RedundantLambdaParameterType
 
 namespace Multiplayer.Client
@@ -19,6 +19,42 @@ namespace Multiplayer.Client
     {
         internal static SyncWorkerDictionaryTree syncWorkers = new SyncWorkerDictionaryTree()
         {
+            #region Defs
+            {
+                (ByteWriter data, Def def) =>
+                {
+                    if (def == null)
+                    {
+                        data.WriteUShort(ushort.MaxValue);
+                        return;
+                    }
+
+                    var defTypeIndex = Array.IndexOf(DefSerialization.DefTypes, def.GetType());
+                    if (defTypeIndex == -1)
+                        throw new SerializationException($"Unknown def type {def.GetType()}");
+
+                    data.WriteUShort((ushort)defTypeIndex);
+                    data.WriteUShort(def.shortHash);
+                },
+                (ByteReader data) => {
+                    ushort defTypeIndex = data.ReadUShort();
+                    if (defTypeIndex == ushort.MaxValue)
+                        return null;
+
+                    ushort shortHash = data.ReadUShort();
+
+                    var defType = DefSerialization.DefTypes[defTypeIndex];
+                    var def = DefSerialization.GetDef(defType, shortHash);
+
+                    if (def == null)
+                        throw new SerializationException($"Couldn't find {defType} with short hash {shortHash}");
+
+                    return def;
+                },
+                true // Implicit
+            },
+            #endregion
+
             #region Pawns
             {
                 (ByteWriter data, PriorityWork work) => WriteSync(data, work.pawn),
@@ -57,6 +93,10 @@ namespace Multiplayer.Client
                 (ByteReader data) => ReadSync<Pawn>(data)?.foodRestriction
             },
             {
+                (ByteWriter data, Pawn_ReadingTracker comp) => WriteSync(data, comp.pawn),
+                (ByteReader data) => ReadSync<Pawn>(data)?.reading
+            },
+            {
                 (ByteWriter data, Pawn_TrainingTracker comp) => WriteSync(data, comp.pawn),
                 (ByteReader data) => ReadSync<Pawn>(data)?.training
             },
@@ -73,8 +113,16 @@ namespace Multiplayer.Client
                 (ByteWriter data, PawnTable table) => WriteSync(data, Find.MainTabsRoot.OpenTab),
                 (ByteReader data) =>
                 {
-                    var tab = (MainTabWindow_PawnTable)ReadSync<MainButtonDef>(data).TabWindow;
-                    return tab.CreateTable();
+                    Rand.PushState();
+                    try
+                    {
+                        var tab = (MainTabWindow_PawnTable)ReadSync<MainButtonDef>(data).TabWindow;
+                        return tab.CreateTable();
+                    }
+                    finally
+                    {
+                        Rand.PopState();
+                    }
                 }, true
             },
             {
@@ -123,6 +171,37 @@ namespace Multiplayer.Client
                 }, true // implicit
             },
             {
+                (SyncWorker data, ref HediffComp hediffComp) => {
+                    if (data.isWriting) {
+                        if (hediffComp != null) {
+                            ushort index = (ushort)Array.IndexOf(hediffCompTypes, hediffComp.GetType());
+                            data.Write(index);
+                            data.Write(hediffComp.parent);
+                            var tempComp = hediffComp;
+                            var compIndex = hediffComp.parent.comps.Where(x => x.props.compClass == tempComp.props.compClass).FirstIndexOf(x => x == tempComp);
+                            data.Write((ushort)compIndex);
+                        } else {
+                            data.Write(ushort.MaxValue);
+                        }
+                    } else {
+                        ushort index = data.Read<ushort>();
+                        if (index == ushort.MaxValue) {
+                            return;
+                        }
+                        HediffWithComps parent = data.Read<HediffWithComps>();
+                        if (parent == null) {
+                            return;
+                        }
+                        Type compType = hediffCompTypes[index];
+                        var compIndex = data.Read<ushort>();
+                        if (compIndex <= 0)
+                            hediffComp = parent.comps.Find(c => c.props.compClass == compType);
+                        else
+                            hediffComp = parent.comps.Where(c => c.props.compClass == compType).ElementAt(compIndex);
+                    }
+                }, true // implicit
+            },
+            {
                 (ByteWriter data, Need need) =>
                 {
                     WriteSync(data, need.pawn);
@@ -138,34 +217,55 @@ namespace Multiplayer.Client
                 (ByteWriter data, Pawn_MindState mindState) => WriteSync(data, mindState.pawn),
                 (ByteReader data) => ReadSync<Pawn>(data).mindState
             },
+            {
+                (ByteWriter data, Pawn_CreepJoinerTracker joinerTracker) => WriteSync(data, joinerTracker?.Pawn),
+                (ByteReader data) => ReadSync<Pawn>(data)?.creepjoiner
+            },
+            {
+                (ByteWriter data, Pawn_NeedsTracker joinerTracker) => WriteSync(data, joinerTracker?.pawn),
+                (ByteReader data) => ReadSync<Pawn>(data)?.needs
+            },
+            {
+                (ByteWriter data, Pawn_GuestTracker guestTracker) => WriteSync(data, guestTracker?.pawn),
+                (ByteReader data) => ReadSync<Pawn>(data)?.guest
+            },
             #endregion
 
             #region Policies
             {
-                (ByteWriter data, Outfit policy) => {
-                    data.WriteInt32(policy.uniqueId);
+                (ByteWriter data, ApparelPolicy policy) => {
+                    data.WriteInt32(policy.id);
                 },
                 (ByteReader data) => {
                     int id = data.ReadInt32();
-                    return Current.Game.outfitDatabase.AllOutfits.Find(o => o.uniqueId == id);
+                    return Current.Game.outfitDatabase.AllOutfits.Find(o => o.id == id);
                 }
             },
             {
                 (ByteWriter data, DrugPolicy policy) => {
-                    data.WriteInt32(policy.uniqueId);
+                    data.WriteInt32(policy.id);
                 },
                 (ByteReader data) => {
                     int id = data.ReadInt32();
-                    return Current.Game.drugPolicyDatabase.AllPolicies.Find(o => o.uniqueId == id);
+                    return Current.Game.drugPolicyDatabase.AllPolicies.Find(o => o.id == id);
                 }
             },
             {
-                (ByteWriter data, FoodRestriction policy) => {
+                (ByteWriter data, FoodPolicy policy) => {
                     data.WriteInt32(policy.id);
                 },
                 (ByteReader data) => {
                     int id = data.ReadInt32();
                     return Current.Game.foodRestrictionDatabase.AllFoodRestrictions.Find(o => o.id == id);
+                }
+            },
+            {
+                (ByteWriter data, ReadingPolicy policy) => {
+                    data.WriteInt32(policy.id);
+                },
+                (ByteReader data) => {
+                    int id = data.ReadInt32();
+                    return Current.Game.readingPolicyDatabase.AllReadingPolicies.Find(o => o.id == id);
                 }
             },
             #endregion
@@ -256,52 +356,18 @@ namespace Multiplayer.Client
                 (SyncWorker sync, ref Verb verb)  => {
                     if (sync.isWriting) {
 
-                        if (verb.DirectOwner is Pawn pawn) {
-                            sync.Write(VerbOwnerType.Pawn);
-                            sync.Write(pawn);
-                        }
-                        else if (verb.DirectOwner is Ability ability) {
-                            sync.Write(VerbOwnerType.Ability);
-                            sync.Write(ability);
-                        }
-                        else if (verb.DirectOwner is ThingComp thingComp) {
-                            sync.Write(VerbOwnerType.ThingComp);
-                            sync.Write(thingComp);
-                        }
-                        else {
-                            Log.Error($"Multiplayer :: SyncDictionary.Verb: Unknown DirectOwner {verb.loadID} {verb.DirectOwner}");
-                            sync.Write(VerbOwnerType.None);
-                            return;
-                        }
-
-                        sync.Write(verb.loadID);
+                        sync.Write(verb.DirectOwner);
+                        if (verb.DirectOwner != null)
+                            sync.Write(verb.loadID);
                     }
-                    else {
-
-                        var ownerType = sync.Read<VerbOwnerType>();
-                        if (ownerType == VerbOwnerType.None) {
+                    else
+                    {
+                        var owner = sync.Read<IVerbOwner>();
+                        if (owner == null)
                             return;
-                        }
-
-                        IVerbOwner verbOwner = null;
-                        if (ownerType == VerbOwnerType.Pawn) {
-                            verbOwner = sync.Read<Pawn>();
-                        }
-                        else if (ownerType == VerbOwnerType.Ability) {
-                            verbOwner = sync.Read<Ability>();
-                        }
-                        else if (ownerType == VerbOwnerType.ThingComp) {
-                            verbOwner = sync.Read<ThingComp>() as IVerbOwner;
-                        }
-
-                        if (verbOwner == null) {
-                            Log.Error($"Multiplayer :: SyncDictionary.Verb: Unknown VerbOwnerType {ownerType}");
-                            return;
-                        }
-
                         var loadID = sync.Read<string>();
 
-                        verb = verbOwner.VerbTracker.AllVerbs.Find(ve => ve.loadID == loadID);
+                        verb = owner.VerbTracker.AllVerbs.Find(ve => ve.loadID == loadID);
 
                         if (verb == null) {
                             Log.Error($"Multiplayer :: SyncDictionary.Verb: Unknown verb {loadID}");
@@ -314,15 +380,40 @@ namespace Multiplayer.Client
             #region AI
             {
                 (ByteWriter data, Lord lord) => {
-                    MpContext context = data.MpContext();
-                    context.map = lord.Map;
-                    data.WriteInt32(lord.loadID);
+                    if (lord == null) {
+                        data.WriteInt32(int.MaxValue);
+                    }
+                    else {
+                        data.WriteInt32(lord.loadID);
+                        MpContext context = data.MpContext();
+                        context.map = lord.Map;
+                    }
                 },
                 (ByteReader data) => {
-                    var map = data.MpContext().map;
                     int lordId = data.ReadInt32();
+                    if (lordId == int.MaxValue)
+                        return null;
+                    var map = data.MpContext().map;
                     return map.lordManager.lords.Find(l => l.loadID == lordId);
                 }
+            },
+            {
+                (ByteWriter data, LordJob job) => {
+                    WriteSync(data, job?.lord);
+                },
+                (ByteReader data) => {
+                    var lord = ReadSync<Lord>(data);
+                    return lord?.LordJob;
+                }, true // Implicit
+            },
+            {
+                (ByteWriter data, LordToil toil) => {
+                    WriteSync(data, toil?.lord);
+                },
+                (ByteReader data) => {
+                    var lord = ReadSync<Lord>(data);
+                    return lord?.curLordToil;
+                }, true // Implicit
             },
             #endregion
 
@@ -380,10 +471,6 @@ namespace Multiplayer.Client
                     PawnColumnDef def = ReadSync<PawnColumnDef>(data);
                     return def.Worker;
                 }, true
-            },
-            {
-                (ByteWriter data, TradeRequestComp trade) => WriteSync(data, trade.parent),
-                (ByteReader data) => ReadSync<WorldObject>(data).GetComponent<TradeRequestComp>()
             },
             #endregion
 
@@ -518,11 +605,13 @@ namespace Multiplayer.Client
             {
                 (ByteWriter data, Command_Ability command) => {
                     WriteSync(data, command.ability);
+                    WriteSync(data, command.Pawn);
                 },
                 (ByteReader data) => {
                     Ability ability = ReadSync<Ability>(data);
+                    Pawn pawn = ReadSync<Pawn>(data);
 
-                    return new Command_Ability(ability);
+                    return new Command_Ability(ability, pawn);
                 }
             },
             #endregion
@@ -542,6 +631,15 @@ namespace Multiplayer.Client
                         sync.Write(place.placingRot);
                     } else {
                         place.placingRot = sync.Read<Rot4>();
+                    }
+                }, true, true // <- Implicit ShouldConstruct
+            },
+            {
+                (SyncWorker sync, ref Designator_Paint paint) => {
+                    if (sync.isWriting) {
+                        sync.Write(paint.colorDef);
+                    } else {
+                        paint.colorDef = sync.Read<ColorDef>();
                     }
                 }, true, true // <- Implicit ShouldConstruct
             },
@@ -567,15 +665,6 @@ namespace Multiplayer.Client
                         build.sourcePrecept = sync.Read<Precept_Building>();
                     }
                 }
-            },
-            {
-                (SyncWorker sync, ref Designator_Paint paint) => {
-                    if (sync.isWriting) {
-                        sync.Write(paint.colorDef);
-                    } else {
-                        paint.colorDef = sync.Read<ColorDef>();
-                    }
-                }, true, true // <- Implicit ShouldConstruct
             },
             #endregion
 
@@ -635,18 +724,18 @@ namespace Multiplayer.Client
                             holder = thing.Map;
                         else if (thing.ParentHolder is ThingComp thingComp)
                             holder = thingComp;
-                        else if (ThingOwnerUtility.GetFirstSpawnedParentThing(thing) is Thing parentThing)
+                        else if (ThingOwnerUtility.GetFirstSpawnedParentThing(thing) is { } parentThing)
                             holder = parentThing;
-                        else if (GetAnyParent<WorldObject>(thing) is WorldObject worldObj)
+                        else if (RwSerialization.GetAnyParent<WorldObject>(thing) is { } worldObj)
                             holder = worldObj;
-                        else if (GetAnyParent<WorldObjectComp>(thing) is WorldObjectComp worldObjComp)
+                        else if (RwSerialization.GetAnyParent<WorldObjectComp>(thing) is { } worldObjComp)
                             holder = worldObjComp;
 
-                        GetImpl(holder, supportedThingHolders, out Type implType, out int index);
+                        RwSerialization.GetImpl(holder, RwSerialization.supportedThingHolders, out Type implType, out int index);
                         if (index == -1)
                         {
                             data.WriteByte(byte.MaxValue);
-                            Log.Error($"Thing {ThingHolderString(thing)} is inaccessible");
+                            Log.Error($"Thing {RwSerialization.ThingHolderString(thing)} is inaccessible");
                             return;
                         }
 
@@ -657,7 +746,6 @@ namespace Multiplayer.Client
                             context.syncingThingParent = true;
                             WriteSyncObject(data, holder, implType);
                             context.syncingThingParent = false;
-                            return;
                         }
                     }
                 },
@@ -674,7 +762,7 @@ namespace Multiplayer.Client
                         if (implIndex == byte.MaxValue)
                             return null;
 
-                        Type implType = supportedThingHolders[implIndex];
+                        Type implType = RwSerialization.supportedThingHolders[implIndex];
 
                         if (implType != typeof(Map))
                         {
@@ -684,13 +772,12 @@ namespace Multiplayer.Client
 
                             if (parent != null)
                                 return ThingOwnerUtility.GetAllThingsRecursively(parent).Find(t => t.thingIDNumber == thingId);
-                            else
-                                return null;
+                            return null;
                         }
                     }
 
                     return ThingsById.thingsById.GetValueSafe(thingId);
-                }
+                }, true
             },
             {
                 (SyncWorker data, ref ThingComp comp) => {
@@ -730,6 +817,7 @@ namespace Multiplayer.Client
             { (SyncWorker data, ref OutfitDatabase db) => db = Current.Game.outfitDatabase },
             { (SyncWorker data, ref DrugPolicyDatabase db) => db = Current.Game.drugPolicyDatabase },
             { (SyncWorker data, ref FoodRestrictionDatabase db) => db = Current.Game.foodRestrictionDatabase },
+            { (SyncWorker data, ref ReadingPolicyDatabase db) => db = Current.Game.readingPolicyDatabase },
 
             #endregion
 
@@ -791,7 +879,7 @@ namespace Multiplayer.Client
                         return null;
 
                     return Find.World.worldObjects.AllWorldObjects.Find(w => w.ID == objId);
-                }
+                }, true // Implicit
             },
             {
                 (SyncWorker data, ref WorldObjectComp comp) => {
@@ -841,6 +929,10 @@ namespace Multiplayer.Client
                     }
                 }, true // implicit
             },
+            {
+                (ByteWriter data, Caravan_ForageTracker tracker) => WriteSync(data, tracker?.caravan),
+                (ByteReader data) => ReadSync<Caravan>(data)?.forage
+            },
             #endregion
 
             #region Game
@@ -858,7 +950,7 @@ namespace Multiplayer.Client
                         if (index == ushort.MaxValue) {
                             return;
                         }
-                        Type compType = worldCompTypes[index];
+                        Type compType = gameCompTypes[index];
                         comp = Current.Game.GetComponent(compType);
                     }
                 }, true // implicit
@@ -964,101 +1056,46 @@ namespace Multiplayer.Client
                         WriteSync(data, info.Tile);
                     }
                 },
-                (ByteReader data) => {
-                    switch (data.ReadByte()) {
-                        case 0:
-                            return new GlobalTargetInfo(ReadSync<Thing>(data));
-                        case 1:
-                            return new GlobalTargetInfo(ReadSync<IntVec3>(data), ReadSync<Map>(data), true); // True to prevent errors/warnings if synced map was null
-                        case 2:
-                            return new GlobalTargetInfo(ReadSync<WorldObject>(data));
-                        case 3:
-                            return new GlobalTargetInfo(data.ReadInt32());
-                        default:
-                            return GlobalTargetInfo.Invalid;
-                    }
-                }
-            },
-            #endregion
-
-            #region Interfaces
-            {
-                (ByteWriter data, ISelectable obj) => {
-                    if (obj == null)
-                    {
-                        WriteSync(data, ISelectableImpl.None);
-                    }
-                    else if (obj is Thing thing)
-                    {
-                        WriteSync(data, ISelectableImpl.Thing);
-                        WriteSync(data, thing);
-                    }
-                    else if (obj is Zone zone)
-                    {
-                        WriteSync(data, ISelectableImpl.Zone);
-                        WriteSync(data, zone);
-                    }
-                    else if (obj is WorldObject worldObj)
-                    {
-                        WriteSync(data, ISelectableImpl.WorldObject);
-                        WriteSync(data, worldObj);
-                    }
-                    else
-                    {
-                        throw new SerializationException($"Unknown ISelectable type: {obj.GetType()}");
-                    }
-                },
-                (ByteReader data) => {
-                    ISelectableImpl impl = ReadSync<ISelectableImpl>(data);
-
-                    return impl switch
-                    {
-                        ISelectableImpl.None => null,
-                        ISelectableImpl.Thing => ReadSync<Thing>(data),
-                        ISelectableImpl.Zone => ReadSync<Zone>(data),
-                        ISelectableImpl.WorldObject => ReadSync<WorldObject>(data),
-                        _ => throw new Exception($"Unknown ISelectable {impl}")
-                    };
-                }, true
-            },
-            {
-                (ByteWriter data, IStoreSettingsParent obj) => {
-                    WriteWithImpl<IStoreSettingsParent>(data, obj, storageParents);
-                },
-                (ByteReader data) => {
-                    return ReadWithImpl<IStoreSettingsParent>(data, storageParents);
-                }
-            },
-            {
-                (ByteWriter data, IPlantToGrowSettable obj) => {
-                    WriteWithImpl<IPlantToGrowSettable>(data, obj, plantToGrowSettables);
-                },
-                (ByteReader data) => {
-                    return ReadWithImpl<IPlantToGrowSettable>(data, plantToGrowSettables);
-                }
-            },
-            {
-                (ByteWriter data, IThingHolder obj) => {
-                    WriteWithImpl<IThingHolder>(data, obj, supportedThingHolders);
-                },
-                (ByteReader data) => {
-                    return ReadWithImpl<IThingHolder>(data, supportedThingHolders);
-                }
-            },
-            {
-                (ByteWriter data, IStorageGroupMember obj) =>
+                (ByteReader data) =>
                 {
-                    if (obj is Thing thing)
-                        WriteSync(data, thing);
-                    else
-                        throw new SerializationException($"Unknown IStorageGroupMember type: {obj.GetType()}");
-                },
-                (ByteReader data) => (IStorageGroupMember)ReadSync<Thing>(data)
+                    return data.ReadByte() switch
+                    {
+                        0 => new GlobalTargetInfo(ReadSync<Thing>(data)),
+                        1 => new GlobalTargetInfo(ReadSync<IntVec3>(data), ReadSync<Map>(data),
+                            true) // True to prevent errors/warnings if synced map was null
+                        ,
+                        2 => new GlobalTargetInfo(ReadSync<WorldObject>(data)),
+                        3 => new GlobalTargetInfo(data.ReadInt32()),
+                        _ => GlobalTargetInfo.Invalid
+                    };
+                }
             },
-
             #endregion
 
             #region Storage
+            {
+                (ByteWriter data, SlotGroup obj) => {
+                    WriteSync(data, obj.parent);
+                },
+                (ByteReader data) =>
+                {
+                    var parent = ReadSync<ISlotGroupParent>(data);
+                    return parent.GetSlotGroup();
+                }
+            },
+            {
+                (ByteWriter data, StorageGroup obj) =>
+                {
+                    data.MpContext().map = obj.Map;
+                    WriteSync(data, obj.loadID);
+                },
+                (ByteReader data) =>
+                {
+                    var loadId = data.ReadInt32();
+                    return data.MpContext().map.storageGroups.groups.Find(g => g.loadID == loadId);
+                }
+            },
+
             {
                 (ByteWriter data, StorageSettings storage) => {
                     WriteSync(data, storage.owner);
@@ -1067,10 +1104,6 @@ namespace Multiplayer.Client
                     IStoreSettingsParent parent = ReadSync<IStoreSettingsParent>(data);
                     return parent?.GetStoreSettings();
                 }
-            },
-            {
-                (ByteWriter data, StorageGroup group) => WriteSync(data, group.members.First()),
-                (ByteReader data) => ReadSync<IStorageGroupMember>(data).Group
             },
             #endregion
 
@@ -1081,9 +1114,8 @@ namespace Multiplayer.Client
                 },
                 (ByteReader data) =>
                 {
-                    // Note that this only returns live (not archived) letters
                     var id = data.ReadInt32();
-                    return Find.LetterStack.LettersListForReading.Find(l => l.ID == id);
+                    return (Letter)Find.Archive.ArchivablesListForReading.Find(a => a is Letter l && l.ID == id);
                 }, true
             },
             #endregion

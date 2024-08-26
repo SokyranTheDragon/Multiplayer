@@ -1,4 +1,3 @@
-using Multiplayer.Common;
 using Multiplayer.Client.Desyncs;
 using Multiplayer.Client.Util;
 using UnityEngine;
@@ -6,7 +5,6 @@ using Verse;
 
 namespace Multiplayer.Client
 {
-    [HotSwappable]
     public class DesyncedWindow : Window
     {
         const int NumButtons = 5;
@@ -54,8 +52,7 @@ namespace Multiplayer.Client
             if (Widgets.ButtonText(new Rect(x, 0, 120, 35), "MpTryResync".Translate()) && !rejoining)
             {
                 Log.Message("Multiplayer: requesting rejoin");
-                Multiplayer.Client.Send(Packets.Client_RequestRejoin);
-                rejoining = true;
+                Rejoiner.DoRejoin();
             }
 
             x += 120 + 10;

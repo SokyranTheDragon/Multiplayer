@@ -7,7 +7,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 
 using HarmonyLib;
+using LudeonTK;
+using Multiplayer.Client.Util;
 using RimWorld;
+using RimWorld.Planet;
 using UnityEngine;
 using Verse;
 using Debug = UnityEngine.Debug;
@@ -18,28 +21,107 @@ namespace Multiplayer.Client
     {
         const string MultiplayerCategory = "Multiplayer";
 
-        [DebugAction("General", actionType = DebugActionType.ToolMap, allowedGameStates = AllowedGameStates.PlayingOnMap)]
+        [DebugAction(MultiplayerCategory, actionType = DebugActionType.ToolWorld, allowedGameStates = AllowedGameStates.PlayingOnWorld)]
+        public static void SpawnCaravans()
+        {
+            for (int a = 0; a < 10; a++)
+            {
+                int num = GenWorld.MouseTile();
+                if (Find.WorldGrid[num].biome.impassable)
+                {
+                    return;
+                }
+
+                List<Pawn> list = new List<Pawn>();
+                int num2 = Rand.RangeInclusive(1, 10);
+                for (int i = 0; i < num2; i++)
+                {
+                    Pawn pawn = PawnGenerator.GeneratePawn(Faction.OfPlayer.def.basicMemberKind, Faction.OfPlayer);
+                    list.Add(pawn);
+                    if (!pawn.WorkTagIsDisabled(WorkTags.Violent))
+                    {
+                        ThingDef thingDef = DefDatabase<ThingDef>.AllDefs.Where((ThingDef def) =>
+                                def.IsWeapon && !def.weaponTags.NullOrEmpty() &&
+                                (def.weaponTags.Contains("SimpleGun") ||
+                                 def.weaponTags.Contains(
+                                     "IndustrialGunAdvanced") ||
+                                 def.weaponTags.Contains("SpacerGun") ||
+                                 def.weaponTags.Contains(
+                                     "MedievalMeleeAdvanced") ||
+                                 def.weaponTags.Contains(
+                                     "NeolithicRangedBasic") ||
+                                 def.weaponTags.Contains(
+                                     "NeolithicRangedDecent") ||
+                                 def.weaponTags.Contains(
+                                     "NeolithicRangedHeavy")))
+                            .RandomElementWithFallback();
+                        pawn.equipment.AddEquipment(
+                            (ThingWithComps)ThingMaker.MakeThing(thingDef, GenStuff.RandomStuffFor(thingDef)));
+                    }
+                }
+
+                int num3 = Rand.RangeInclusive(-4, 10);
+                for (int j = 0; j < num3; j++)
+                {
+                    Pawn item = PawnGenerator.GeneratePawn(
+                        DefDatabase<PawnKindDef>.AllDefs
+                            .Where((PawnKindDef d) => d.RaceProps.Animal && d.RaceProps.wildness < 1f).RandomElement(),
+                        Faction.OfPlayer);
+                    list.Add(item);
+                }
+
+                Caravan caravan =
+                    CaravanMaker.MakeCaravan(list, Faction.OfPlayer, num, addToWorldPawnsIfNotAlready: true);
+
+                List<Thing> list2 = ThingSetMakerDefOf.DebugCaravanInventory.root.Generate();
+                for (int k = 0; k < list2.Count; k++)
+                {
+                    Thing thing = list2[k];
+                    if (!(thing.GetStatValue(StatDefOf.Mass) * (float)thing.stackCount >
+                          caravan.MassCapacity - caravan.MassUsage))
+                    {
+                        CaravanInventoryUtility.GiveThing(caravan, thing);
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        [DebugAction(MultiplayerCategory, "Set faction (rect)", actionType = DebugActionType.Action, allowedGameStates = AllowedGameStates.PlayingOnMap, displayPriority = 100)]
+        private static void SetFaction()
+        {
+        	DebugToolsGeneral.GenericRectTool("Set faction (rect)", rect =>
+        	{
+                List<FloatMenuOption> factionOptions = new List<FloatMenuOption>();
+                foreach (Faction faction in Find.FactionManager.AllFactionsInViewOrder)
+                {
+                    FloatMenuOption item = new FloatMenuOption(faction.Name, () =>
+                    {
+                        foreach (Thing thing in rect.SelectMany(c => Find.CurrentMap.thingGrid.ThingsAt(c)))
+                        {
+                            if (thing.def.CanHaveFaction)
+                                thing.SetFaction(faction);
+
+                            if (thing is IThingHolder holder && holder.GetDirectlyHeldThings() != null)
+                                foreach (var heldThing in holder.GetDirectlyHeldThings())
+                                    if (heldThing.def.CanHaveFaction)
+                                        heldThing.SetFaction(faction);
+                        }
+                    });
+                    factionOptions.Add(item);
+                }
+                Find.WindowStack.Add(new FloatMenu(factionOptions));
+        	});
+        }
+
+        [DebugAction(MultiplayerCategory, actionType = DebugActionType.ToolMap, allowedGameStates = AllowedGameStates.PlayingOnMap)]
         public static void SpawnShuttleAcceptColonists()
         {
-            var shuttle = ThingMaker.MakeThing(ThingDefOf.Shuttle, null);
+            var shuttle = ThingMaker.MakeThing(ThingDefOf.Shuttle);
             shuttle.TryGetComp<CompShuttle>().acceptColonists = true;
             GenPlace.TryPlaceThing(shuttle, UI.MouseCell(), Find.CurrentMap, ThingPlaceMode.Near);
-        }
-
-        [DebugAction(MultiplayerCategory, "Save Map", allowedGameStates = AllowedGameStates.Playing)]
-        public static void SaveGameCmd()
-        {
-            Map map = Find.CurrentMap;
-            byte[] mapData = ScribeUtil.WriteExposable(Current.Game, "map", true);
-            File.WriteAllBytes($"map_{map.uniqueID}_{Multiplayer.username}.xml", mapData);
-        }
-
-        [DebugAction(MultiplayerCategory, "Save Map (local)", allowedGameStates = AllowedGameStates.Playing)]
-        public static void SaveGameCmdLocal()
-        {
-            Map map = Find.CurrentMap;
-            byte[] mapData = ScribeUtil.WriteExposable(Current.Game, "map", true);
-            File.WriteAllBytes($"map_{map.uniqueID}_{Multiplayer.username}.xml", mapData);
         }
 
         [DebugAction(MultiplayerCategory, "Save Game", allowedGameStates = AllowedGameStates.Playing)]
@@ -50,29 +132,22 @@ namespace Multiplayer.Client
             File.WriteAllBytes($"game_{Multiplayer.username}.xml", data);
         }
 
-        [DebugAction(MultiplayerCategory, "Save Game (local)", allowedGameStates = AllowedGameStates.Playing)]
-        public static void SaveGameLocal()
-        {
-            Game game = Current.Game;
-            byte[] data = ScribeUtil.WriteExposable(game, "game", true);
-            File.WriteAllBytes($"game_{Multiplayer.username}.xml", data);
-        }
-
         [DebugAction(MultiplayerCategory, "Dump Sync Types", allowedGameStates = AllowedGameStates.Entry)]
         public static void DumpSyncTypes()
         {
             var dict = new Dictionary<string, Type[]>() {
-                {"ThingComp", ImplSerialization.thingCompTypes},
-                {"AbilityComp", ImplSerialization.abilityCompTypes},
-                {"Designator", ImplSerialization.designatorTypes},
-                {"WorldObjectComp", ImplSerialization.worldObjectCompTypes},
-                {"IStoreSettingsParent", ImplSerialization.storageParents},
-                {"IPlantToGrowSettable", ImplSerialization.plantToGrowSettables},
+                {"ThingComp", CompSerialization.thingCompTypes},
+                {"AbilityComp", CompSerialization.abilityCompTypes},
+                {"WorldObjectComp", CompSerialization.worldObjectCompTypes},
+                {"HediffComp", CompSerialization.hediffCompTypes},
 
-                {"GameComponent", ImplSerialization.gameCompTypes},
-                {"WorldComponent", ImplSerialization.worldCompTypes},
-                {"MapComponent", ImplSerialization.mapCompTypes},
+                {"GameComponent", CompSerialization.gameCompTypes},
+                {"WorldComponent", CompSerialization.worldCompTypes},
+                {"MapComponent", CompSerialization.mapCompTypes},
             };
+
+            foreach (var syncWithImplType in Multiplayer.serialization.syncWithImplTypes)
+                dict[syncWithImplType.Name] = Multiplayer.serialization.TypeHelper!.GetImplementations(syncWithImplType).ToArray();
 
             foreach(var kv in dict) {
                 Log.Warning($"== {kv.Key} ==");
@@ -101,6 +176,33 @@ namespace Multiplayer.Client
             }
         }
 
+        [DebugAction(MultiplayerCategory, "Dump IRenameable Types", allowedGameStates = AllowedGameStates.Entry)]
+        static void DumpIRenameableTypes()
+        {
+            var synced = new List<Type>();
+            var unsynced = new List<Type>();
+            var methods = typeof(IRenameable).AllImplementing()
+                .Select(t => AccessTools.DeclaredPropertySetter(t, nameof(IRenameable.RenamableLabel)))
+                .AllNotNull();
+
+            foreach (var method in methods)
+            {
+                // Check if a method is synced or not
+                if (Sync.methodBaseToInternalId.ContainsKey(method))
+                    synced.Add(method.DeclaringType);
+                else
+                    unsynced.Add(method.DeclaringType);
+            }
+
+            Log.Warning("== Synced IRenameable types ==");
+            Log.Message(!synced.Any() ? "No types" : synced.Select(GetNameWithNamespace).Join(delimiter: "\n"));
+
+            Log.Warning("== Unsynced IRenameable types ==");
+            Log.Message(!unsynced.Any() ? "No types" : unsynced.Select(GetNameWithNamespace).Join(delimiter: "\n"));
+
+            static string GetNameWithNamespace(Type t) => t.Namespace.NullOrEmpty() ? t.Name : $"{t.Namespace}.{t.Name}";
+        }
+
         [DebugAction(MultiplayerCategory, allowedGameStates = AllowedGameStates.Playing)]
         static void LogAllPatch()
         {
@@ -126,12 +228,6 @@ namespace Multiplayer.Client
         static void MultiplayerMethodCallLogger(MethodBase __originalMethod)
         {
             Debug.Log(__originalMethod.FullDescription());
-        }
-
-        [DebugAction(MultiplayerCategory, allowedGameStates = AllowedGameStates.Playing)]
-        static void Add1000TicksToTime()
-        {
-            Find.TickManager.ticksGameInt += 1000;
         }
 
 #if DEBUG
@@ -234,8 +330,8 @@ namespace Multiplayer.Client
 
             // We only care about transpiled methods that aren't part of MP.
             var query = Multiplayer.harmony.GetPatchedMethods()
-                .Where(m => !m.DeclaringType.Namespace.StartsWith("Multiplayer") &&
-                    !Harmony.GetPatchInfo(m).Transpilers.NullOrEmpty());
+                .Where(m => !(m.DeclaringType.Namespace?.StartsWith("Multiplayer") ?? false)
+                    && !Harmony.GetPatchInfo(m).Transpilers.NullOrEmpty());
 
             foreach (var method in query) {
                 builder.Append(GetMethodHash(method));

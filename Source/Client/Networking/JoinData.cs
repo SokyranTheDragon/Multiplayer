@@ -23,7 +23,7 @@ namespace Multiplayer.Client
         {
             var data = new ByteWriter();
 
-            data.WriteInt32(activeModsSnapshot.Count());
+            data.WriteInt32(activeModsSnapshot.Count);
             foreach (var m in activeModsSnapshot)
             {
                 data.WriteString(m.PackageIdNonUnique);
@@ -48,7 +48,9 @@ namespace Multiplayer.Client
             data.WriteBool(writeConfigs);
             if (writeConfigs)
             {
-                var configs = GetSyncableConfigContents(activeModsSnapshot.Select(m => m.PackageIdNonUnique));
+                var configs = GetSyncableConfigContents(
+                    activeModsSnapshot.Select(m => m.PackageIdNonUnique).ToList()
+                );
 
                 data.WriteInt32(configs.Count);
                 foreach (var config in configs)
@@ -124,7 +126,7 @@ namespace Multiplayer.Client
         }
 
         [SuppressMessage("ReSharper", "StringLiteralTypo")]
-        private static string[] ignoredConfigsModIds =
+        public static string[] ignoredConfigsModIds =
         {
             // The old mod management code also included TacticalGroupsMod.xml and GraphicSetter.xml but I couldn't find their ids
             // todo unhardcode it
@@ -138,14 +140,15 @@ namespace Multiplayer.Client
             "fluffy.modmanager",
             "jelly.modswitch",
             "betterscenes.rimconnect", // contains secret key for streamer
-            "jaxe.rimhud"
+            "jaxe.rimhud",
+            //"zetrith.prepatcher"
         };
 
         public const string TempConfigsDir = "MultiplayerTempConfigs";
         public const string HugsLibId = "unlimitedhugs.hugslib";
         public const string HugsLibSettingsFile = "ModSettings";
 
-        public static List<ModConfig> GetSyncableConfigContents(IEnumerable<string> modIds)
+        public static List<ModConfig> GetSyncableConfigContents(List<string> modIds)
         {
             var list = new List<ModConfig>();
 
@@ -205,7 +208,7 @@ namespace Multiplayer.Client
                 remote.remoteRwVersion == VersionControl.CurrentVersionString &&
                 remote.CompareMods(activeModsSnapshot) == ModListDiff.None &&
                 remote.remoteFiles.DictsEqual(modFilesSnapshot) &&
-                (!remote.hasConfigs || remote.remoteModConfigs.EqualAsSets(GetSyncableConfigContents(remote.RemoteModIds)));
+                (!remote.hasConfigs || remote.remoteModConfigs.EqualAsSets(GetSyncableConfigContents(remote.RemoteModIds.ToList())));
         }
 
         internal static void TakeModDataSnapshot()
@@ -354,7 +357,7 @@ namespace Multiplayer.Client
 
     public struct ModInfo
     {
-        public string packageId; // Mod package id with no _steam suffix
+        public string packageId; // Mod package id, lower case, no _steam suffix
         public string name;
         public ulong steamId; // Zero means invalid
         public ContentSource source;

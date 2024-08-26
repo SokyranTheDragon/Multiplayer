@@ -11,13 +11,14 @@ using Verse;
 
 using Multiplayer.Common;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using Multiplayer.Client.AsyncTime;
 using Multiplayer.Client.Comp;
-using Multiplayer.Client.Patches;
 using Multiplayer.Client.Util;
 
 namespace Multiplayer.Client
 {
-    public class Multiplayer : Mod
+    public static class Multiplayer
     {
         public static Harmony harmony = new("multiplayer");
         public static MpSettings settings;
@@ -25,8 +26,12 @@ namespace Multiplayer.Client
         public static MultiplayerGame game;
         public static MultiplayerSession session;
 
-        public static ConnectionBase Client => session?.client;
+        public static Common.SyncSerialization serialization;
+
         public static MultiplayerServer LocalServer { get; set; }
+        public static Thread localServerThread;
+
+        public static ConnectionBase Client => session?.client;
         public static PacketLogWindow WriterLog => session?.writerLog;
         public static PacketLogWindow ReaderLog => session?.readerLog;
         public static bool IsReplay => session?.replay ?? false;
@@ -35,17 +40,17 @@ namespace Multiplayer.Client
 
         public static bool reloading;
 
-        public static IdBlock GlobalIdBlock => game.gameComp.globalIdBlock;
         public static MultiplayerGameComp GameComp => game.gameComp;
         public static MultiplayerWorldComp WorldComp => game.worldComp;
+        public static AsyncWorldTimeComp AsyncWorldTime => game.asyncWorldTimeComp;
 
         public static bool ShowDevInfo => Prefs.DevMode && settings.showDevInfo;
         public static bool GhostMode => session is { ghostModeCheckbox: true };
 
         public static Faction RealPlayerFaction => Client != null ? game.RealPlayerFaction : Faction.OfPlayer;
 
-        public static bool ExecutingCmds => MultiplayerWorldComp.executingCmdWorld || AsyncTimeComp.executingCmdMap != null;
-        public static bool Ticking => MultiplayerWorldComp.tickingWorld || AsyncTimeComp.tickingMap != null || ConstantTicker.ticking;
+        public static bool ExecutingCmds => AsyncWorldTimeComp.executingCmdWorld || AsyncTimeComp.executingCmdMap != null;
+        public static bool Ticking => AsyncWorldTimeComp.tickingWorld || AsyncTimeComp.tickingMap != null || ConstantTicker.ticking;
         public static Map MapContext => AsyncTimeComp.tickingMap ?? AsyncTimeComp.executingCmdMap;
 
         public static bool dontSync;
@@ -70,16 +75,28 @@ namespace Multiplayer.Client
         public static string restartConnect;
         public static bool restartConfigs;
 
-        public Multiplayer(ModContentPack pack) : base(pack)
+        public static void InitMultiplayer()
         {
-            Native.EarlyInit();
+            Native.EarlyInit(
+                Application.platform switch
+                {
+                    RuntimePlatform.LinuxEditor => Native.NativeOS.Linux,
+                    RuntimePlatform.LinuxPlayer => Native.NativeOS.Linux,
+                    RuntimePlatform.OSXEditor => Native.NativeOS.OSX,
+                    RuntimePlatform.OSXPlayer => Native.NativeOS.OSX,
+                    _ => Native.NativeOS.Windows
+                });
+
             DisableOmitFramePointer();
 
+            MultiplayerLoader.Multiplayer.settingsWindowDrawer =
+                rect => MpSettingsUI.DoSettingsWindowContents(settings, rect);
+
             using (DeepProfilerWrapper.Section("Multiplayer CacheTypeHierarchy"))
-                CacheTypeHierarchy();
+                TypeCache.CacheTypeHierarchy();
 
             using (DeepProfilerWrapper.Section("Multiplayer CacheTypeByName"))
-                CacheTypeByName();
+                TypeCache.CacheTypeByName();
 
             if (GenCommandLine.CommandLineArgPassed("profiler"))
             {
@@ -94,24 +111,21 @@ namespace Multiplayer.Client
                 arbiterInstance = true;
             }
 
-            settings = GetSettings<MpSettings>();
+            ScribeLike.provider = new ScribeProvider();
+            settings = MultiplayerLoader.Multiplayer.instance!.GetSettings<MpSettings>();
 
-            ProcessEnvironment();
-
-            SyncDict.Init();
-
-            EarlyPatches();
-            InitSync();
+            EarlyInit.ProcessEnvironment();
+            EarlyInit.EarlyPatches(harmony);
+            MpReflection.allAssembliesHook = RwAllAssemblies;
+            EarlyInit.InitSync();
             CheckInterfaceVersions();
 
             LongEventHandler.ExecuteWhenFinished(() => {
                 // Double Execute ensures it'll run last.
-                LongEventHandler.ExecuteWhenFinished(LatePatches);
+                LongEventHandler.ExecuteWhenFinished(EarlyInit.LatePatches);
             });
 
-#if DEBUG
-            Application.logMessageReceivedThreaded -= Log.Notify_MessageReceivedThreadedInternal;
-#endif
+            MultiplayerData.modCtorRoundMode = RoundMode.GetCurrentRoundMode();
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -119,121 +133,6 @@ namespace Multiplayer.Client
         {
             Native.mini_parse_debug_option("disable_omit_fp");
         }
-
-        public const string RestartConnectVariable = "MultiplayerRestartConnect";
-        public const string RestartConfigsVariable = "MultiplayerRestartConfigs";
-
-        private static void ProcessEnvironment()
-        {
-            if (!Environment.GetEnvironmentVariable(RestartConnectVariable).NullOrEmpty())
-            {
-                restartConnect = Environment.GetEnvironmentVariable(RestartConnectVariable);
-                Environment.SetEnvironmentVariable(RestartConnectVariable, ""); // Effectively unsets it
-            }
-
-            if (!Environment.GetEnvironmentVariable(RestartConfigsVariable).NullOrEmpty())
-            {
-                restartConfigs = Environment.GetEnvironmentVariable(RestartConfigsVariable) == "true";
-                Environment.SetEnvironmentVariable(RestartConfigsVariable, "");
-            }
-        }
-
-        internal static Dictionary<Type, List<Type>> subClasses = new();
-        internal static Dictionary<Type, List<Type>> subClassesNonAbstract = new();
-        internal static Dictionary<Type, List<Type>> implementations = new();
-
-        private static void CacheTypeHierarchy()
-        {
-            foreach (var type in GenTypes.AllTypes)
-            {
-                for (var baseType = type.BaseType; baseType != null; baseType = baseType.BaseType)
-                {
-                    subClasses.GetOrAddNew(baseType).Add(type);
-                    if (!type.IsAbstract)
-                        subClassesNonAbstract.GetOrAddNew(baseType).Add(type);
-                }
-
-                foreach (var i in type.GetInterfaces())
-                    implementations.GetOrAddNew(i).Add(type);
-            }
-        }
-
-        internal static Dictionary<string, Type> typeByName = new();
-        internal static Dictionary<string, Type> typeByFullName = new();
-
-        private static void CacheTypeByName()
-        {
-            foreach (var type in GenTypes.AllTypes)
-            {
-                if (!typeByName.ContainsKey(type.Name))
-                    typeByName[type.Name] = type;
-
-                if (!typeByFullName.ContainsKey(type.Name))
-                    typeByFullName[type.FullName] = type;
-            }
-        }
-
-        private static void EarlyPatches()
-        {
-            // Might fix some mod desyncs
-            harmony.PatchMeasure(
-                AccessTools.Constructor(typeof(Def), new Type[0]),
-                new HarmonyMethod(typeof(RandPatches), nameof(RandPatches.Prefix)),
-                new HarmonyMethod(typeof(RandPatches), nameof(RandPatches.Postfix))
-            );
-
-            Assembly.GetCallingAssembly().GetTypes().Do(type => {
-                if (type.IsDefined(typeof(EarlyPatchAttribute)))
-                    harmony.CreateClassProcessor(type).Patch();
-            });
-
-#if DEBUG
-            DebugPatches.Init();
-#endif
-        }
-
-        private static void InitSync()
-        {
-            using (DeepProfilerWrapper.Section("Multiplayer CollectTypes"))
-                SyncSerialization.Init();
-
-            using (DeepProfilerWrapper.Section("Multiplayer SyncGame"))
-                SyncGame.Init();
-
-            using (DeepProfilerWrapper.Section("Multiplayer Sync register attributes"))
-                Sync.RegisterAllAttributes(typeof(Multiplayer).Assembly);
-
-            using (DeepProfilerWrapper.Section("Multiplayer Sync validation"))
-                Sync.ValidateAll();
-        }
-
-        private static void LatePatches()
-        {
-            // optimization, cache DescendantThingDefs
-            harmony.PatchMeasure(
-                AccessTools.Method(typeof(ThingCategoryDef), "get_DescendantThingDefs"),
-                new HarmonyMethod(typeof(ThingCategoryDef_DescendantThingDefsPatch), "Prefix"),
-                new HarmonyMethod(typeof(ThingCategoryDef_DescendantThingDefsPatch), "Postfix")
-            );
-
-            // optimization, cache ThisAndChildCategoryDefs
-            harmony.PatchMeasure(
-                AccessTools.Method(typeof(ThingCategoryDef), "get_ThisAndChildCategoryDefs"),
-                new HarmonyMethod(typeof(ThingCategoryDef_ThisAndChildCategoryDefsPatch), "Prefix"),
-                new HarmonyMethod(typeof(ThingCategoryDef_ThisAndChildCategoryDefsPatch), "Postfix")
-            );
-
-            if (MpVersion.IsDebug) {
-                Log.Message("== Structure == \n" + SyncDict.syncWorkers.PrintStructure());
-            }
-        }
-
-        public override void DoSettingsWindowContents(Rect inRect)
-        {
-            settings.DoSettingsWindowContents(inRect);
-        }
-
-        public override string SettingsCategory() => "Multiplayer";
 
         private static void CheckInterfaceVersions()
         {
@@ -295,13 +194,14 @@ namespace Multiplayer.Client
             {
                 session.Stop();
                 session = null;
+
                 Prefs.Apply();
             }
 
             if (LocalServer != null)
             {
                 LocalServer.running = false;
-                LocalServer.serverThread?.Join();
+                localServerThread?.Join();
                 LocalServer.TryStop();
                 LocalServer = null;
             }
@@ -321,9 +221,16 @@ namespace Multiplayer.Client
             }
         }
 
-        public static void WriteSettingsToDisk()
+        private static IEnumerable<Assembly> RwAllAssemblies()
         {
-            LoadedModManager.GetMod<Multiplayer>().WriteSettings();
+            yield return Assembly.GetAssembly(typeof(Game));
+
+            foreach (ModContentPack mod in LoadedModManager.RunningMods)
+            foreach (Assembly assembly in mod.assemblies.loadedAssemblies)
+                yield return assembly;
+
+            if (Assembly.GetEntryAssembly() != null)
+                yield return Assembly.GetEntryAssembly();
         }
     }
 }

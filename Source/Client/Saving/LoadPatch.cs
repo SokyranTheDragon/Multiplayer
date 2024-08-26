@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using HarmonyLib;
+﻿using HarmonyLib;
 using Multiplayer.Client.Saving;
 using Verse;
 using Verse.Profile;
@@ -21,7 +20,7 @@ namespace Multiplayer.Client
 
             try
             {
-                ScribeUtil.StartLoading(gameToLoad.SaveData);
+                ScribeUtil.InitFromXmlDoc(gameToLoad.SaveData);
                 ScribeMetaHeaderUtility.LoadGameDataHeader(ScribeMetaHeaderUtility.ScribeHeaderMode.Map, false);
                 Scribe.EnterNode("game");
                 Current.Game = new Game();
@@ -31,7 +30,7 @@ namespace Multiplayer.Client
                 // todo revisit disconnection during loading
                 // todo loading can be async, concurrency issues
                 if (Multiplayer.Client != null)
-                    SemiPersistent.ReadSemiPersistent(gameToLoad.SemiPersistent);
+                    SessionData.ReadSessionData(gameToLoad.SessionData);
             }
             finally
             {
@@ -46,7 +45,7 @@ namespace Multiplayer.Client
                 LongEventHandler.ExecuteWhenFinished(() =>
                 {
                     // Inits all caches
-                    foreach (ITickable tickable in TickPatch.AllTickables.Where(t => !(t is ConstantTicker)))
+                    foreach (ITickable tickable in TickPatch.AllTickables)
                         tickable.Tick();
 
                     if (!Current.Game.Maps.Any())

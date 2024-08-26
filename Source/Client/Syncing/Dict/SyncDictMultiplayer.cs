@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Multiplayer.API;
 using Multiplayer.Client.Comp;
 using Multiplayer.Client.Persistent;
 using Multiplayer.Common;
@@ -27,7 +28,7 @@ namespace Multiplayer.Client
                 }
             },
             {
-                (ByteWriter data, ISession session) =>
+                (ByteWriter data, Session session) =>
                 {
                     data.MpContext().map ??= session.Map;
                     data.WriteInt32(session.SessionId);
@@ -36,6 +37,22 @@ namespace Multiplayer.Client
                     int id = data.ReadInt32();
                     return Multiplayer.game.GetSessions(data.MpContext().map).FirstOrDefault(s => s.SessionId == id);
                 }, true
+            },
+            {
+                (ByteWriter data, ISessionWithTransferables session) =>
+                {
+                    if (session is Session s)
+                    {
+                        WriteSync(data, s);
+                        return;
+                    }
+
+                    WriteSync<Session>(data, null);
+                    if (session != null)
+                        Log.ErrorOnce($"Trying to sync {nameof(ISessionWithTransferables)} that is not a subtype of {nameof(Session)}", session.GetHashCode());
+                },
+                (ByteReader data) => ReadSync<Session>(data) as ISessionWithTransferables,
+                true
             },
             #endregion
 
@@ -97,6 +114,13 @@ namespace Multiplayer.Client
                 (ByteWriter _, MultiplayerGameComp _) => {
                 },
                 (ByteReader _) => Multiplayer.GameComp
+            },
+            #endregion
+
+            #region Multiplayer ScheduledCommand
+            {
+                (ByteWriter _, ScheduledCommand _) => throw new NotImplementedException(),
+                (ByteReader data) => ScheduledCommand.Deserialize(new ByteReader(data.ReadPrefixedBytes()))
             },
             #endregion
         };

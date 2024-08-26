@@ -43,27 +43,26 @@ namespace Multiplayer.Client
 
         private void ReadSpSave(FileInfo file)
         {
-            var saveFile = new SaveFile(Path.GetFileNameWithoutExtension(file.Name), false, file);
-
             try
             {
+                var saveFile = new SaveFile(Path.GetFileNameWithoutExtension(file.Name), false, file);
                 using var stream = file.OpenRead();
                 ReadSaveInfo(stream, saveFile);
                 data[file] = saveFile;
             }
             catch (Exception ex)
             {
-                Log.Warning("Exception loading save info of " + file.Name + ": " + ex.ToString());
+                Log.Warning($"Exception loading save info of {file.Name}: {ex}");
             }
         }
 
         private void ReadMpSave(FileInfo file)
         {
-            var displayName = Path.ChangeExtension(file.FullName.Substring(Multiplayer.ReplaysDir.Length + 1), null);
-            var saveFile = new SaveFile(displayName, true, file);
-
             try
             {
+                var displayName = Path.ChangeExtension(file.FullName.Substring(Multiplayer.ReplaysDir.Length + 1), null);
+                var saveFile = new SaveFile(displayName, true, file);
+
                 var replay = Replay.ForLoading(file);
                 if (!replay.LoadInfo()) return;
 
@@ -77,11 +76,12 @@ namespace Multiplayer.Client
                     saveFile.modIds = replay.info.modIds.ToArray();
                     saveFile.modNames = replay.info.modNames.ToArray();
                     saveFile.asyncTime = replay.info.asyncTime;
+                    saveFile.multifaction = replay.info.multifaction;
                 }
                 else
                 {
-                    using var zip = replay.ZipFile;
-                    var stream = zip["world/000_save"].OpenReader();
+                    using var zip = replay.OpenZipRead();
+                    using var stream = zip.GetEntry("world/000_save")!.Open();
                     ReadSaveInfo(stream, saveFile);
                 }
 
@@ -89,7 +89,7 @@ namespace Multiplayer.Client
             }
             catch (Exception ex)
             {
-                Log.Warning("Exception loading replay info of " + file.Name + ": " + ex.ToString());
+                Log.Warning($"Exception loading replay info of {file.Name}: {ex}");
             }
         }
 
@@ -134,11 +134,12 @@ namespace Multiplayer.Client
         public string gameName;
 
         public string rwVersion;
-        public string[] modNames = new string[0];
-        public string[] modIds = new string[0];
+        public string[] modNames = Array.Empty<string>();
+        public string[] modIds = Array.Empty<string>();
 
         public int protocol;
         public bool asyncTime;
+        public bool multifaction;
 
         public bool HasRwVersion => rwVersion != null;
 

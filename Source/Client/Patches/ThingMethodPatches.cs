@@ -1,6 +1,7 @@
 using HarmonyLib;
 using RimWorld;
 using System.Collections.Generic;
+using Multiplayer.Client.Factions;
 using Verse;
 using Verse.AI;
 
@@ -17,10 +18,10 @@ namespace Multiplayer.Client
             __state = pawn.Map;
         }
 
-        static void Postfix(Pawn pawn, Container<Map>? __state)
+        static void Finalizer(Pawn pawn, Container<Map>? __state)
         {
-            if (__state != null)
-                __state.PopFaction();
+            if (__state is { Inner: var map })
+                map.PopFaction();
         }
     }
 
@@ -35,10 +36,10 @@ namespace Multiplayer.Client
             __state = ___pawn.Map;
         }
 
-        static void Postfix(Container<Map>? __state)
+        static void Finalizer(Container<Map>? __state)
         {
-            if (__state != null)
-                __state.PopFaction();
+            if (__state is { Inner: var map })
+                map.PopFaction();
         }
     }
 
@@ -63,15 +64,14 @@ namespace Multiplayer.Client
             __state = pawn.Map;
         }
 
-        static void Postfix(Container<Map>? __state)
+        static void Finalizer(Container<Map>? __state)
         {
-            if (__state != null)
-                __state.PopFaction();
+            if (__state is { Inner: var map })
+                map.PopFaction();
         }
     }
 
-    [HarmonyPatch(typeof(Pawn_JobTracker))]
-    [HarmonyPatch(nameof(Pawn_JobTracker.EndCurrentJob))]
+    [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.EndCurrentJob))]
     public static class JobTrackerEndCurrent
     {
         static void Prefix(Pawn_JobTracker __instance, JobCondition condition, ref Container<Map>? __state)
@@ -85,15 +85,14 @@ namespace Multiplayer.Client
             __state = pawn.Map;
         }
 
-        static void Postfix(Container<Map>? __state)
+        static void Finalizer(Container<Map>? __state)
         {
-            if (__state != null)
-                __state.PopFaction();
+            if (__state is { Inner: var map })
+                map.PopFaction();
         }
     }
 
-    [HarmonyPatch(typeof(Pawn_JobTracker))]
-    [HarmonyPatch(nameof(Pawn_JobTracker.CheckForJobOverride))]
+    [HarmonyPatch(typeof(Pawn_JobTracker), nameof(Pawn_JobTracker.CheckForJobOverride_NewTemp))]
     public static class JobTrackerOverride
     {
         static void Prefix(Pawn_JobTracker __instance, ref Container<Map>? __state)
@@ -108,11 +107,11 @@ namespace Multiplayer.Client
             __state = pawn.Map;
         }
 
-        static void Postfix(Container<Map>? __state)
+        static void Finalizer(Container<Map>? __state)
         {
-            if (__state != null)
+            if (__state is { Inner: var map })
             {
-                __state.PopFaction();
+                map.PopFaction();
                 ThingContext.Pop();
             }
         }
@@ -132,13 +131,25 @@ namespace Multiplayer.Client
                 __instance.Map.PushFaction(__instance.Faction);
         }
 
-        [HarmonyPriority(MpPriority.MpLast)]
-        public static void Postfix(Thing __instance, Container<Map>? __state)
+        [HarmonyPriority(MpPriority.MpFirst)]
+        public static void Prefix_SpawnSetup(Thing __instance, Map __0, ref Container<Map>? __state)
         {
-            if (__state == null) return;
+            if (Multiplayer.Client == null) return;
+
+            __state = __0;
+            ThingContext.Push(__instance);
 
             if (__instance.def.CanHaveFaction)
-                __state.PopFaction();
+                __0.PushFaction(__instance.Faction);
+        }
+
+        [HarmonyPriority(MpPriority.MpLast)]
+        public static void Finalizer(Thing __instance, Container<Map>? __state)
+        {
+            if (__state is not { Inner: var map }) return;
+
+            if (__instance.def.CanHaveFaction)
+                map.PopFaction();
 
             ThingContext.Pop();
         }

@@ -16,6 +16,9 @@ namespace Multiplayer.Client
         private static Dictionary<string, bool> translationMods = new();
         public static Dictionary<string, DefInfo> localDefInfos;
 
+        public static RoundModeEnum modCtorRoundMode;
+        public static RoundModeEnum staticCtorRoundMode;
+
         public static void PrecacheMods()
         {
             foreach (var mod in ModLister.AllInstalledMods)
@@ -38,13 +41,22 @@ namespace Multiplayer.Client
             if (translationMods.TryGetValue(mod.RootDir.FullName, out var xml))
                 return xml;
 
-            var dummyPack = DummyContentPack(mod);
+            // ModContentPack.InitLoadFolders can throw "Illegal characters in path"
+            try
+            {
+                var dummyPack = DummyContentPack(mod);
 
-            return translationMods[mod.RootDir.FullName] =
-                !ModHasAssemblies(mod)
-                && !ModContentPack.GetAllFilesForModPreserveOrder(dummyPack, "Defs/", _ => true).Any()
-                && !ModContentPack.GetAllFilesForModPreserveOrder(dummyPack, "Patches/", _ => true).Any()
-                && ModContentPack.GetAllFilesForModPreserveOrder(dummyPack, "Languages/", _ => true).Any();
+                return translationMods[mod.RootDir.FullName] =
+                    !ModHasAssemblies(mod)
+                    && !ModContentPack.GetAllFilesForModPreserveOrder(dummyPack, "Defs/", _ => true).Any()
+                    && !ModContentPack.GetAllFilesForModPreserveOrder(dummyPack, "Patches/", _ => true).Any()
+                    && ModContentPack.GetAllFilesForModPreserveOrder(dummyPack, "Languages/", _ => true).Any();
+            }
+            catch (Exception e)
+            {
+                Log.Error($"Error getting information about mod {mod.RootDir.FullName}: {e}");
+                return translationMods[mod.RootDir.FullName] = false;
+            }
         }
 
         public static bool ModHasAssemblies(ModMetaData mod)
@@ -108,17 +120,20 @@ namespace Multiplayer.Client
 
             int TypeHash(Type type) => GenText.StableStringHash(type.FullName);
 
-            dict["ThingComp"] = GetDefInfo(ImplSerialization.thingCompTypes, TypeHash);
-            dict["AbilityComp"] = GetDefInfo(ImplSerialization.abilityCompTypes, TypeHash);
-            dict["Designator"] = GetDefInfo(ImplSerialization.designatorTypes, TypeHash);
-            dict["WorldObjectComp"] = GetDefInfo(ImplSerialization.worldObjectCompTypes, TypeHash);
-            dict["IStoreSettingsParent"] = GetDefInfo(ImplSerialization.storageParents, TypeHash);
-            dict["IPlantToGrowSettable"] = GetDefInfo(ImplSerialization.plantToGrowSettables, TypeHash);
-            dict["DefTypes"] = GetDefInfo(DefSerialization.DefTypes, TypeHash);
+            dict["ThingComp"] = GetDefInfo(CompSerialization.thingCompTypes, TypeHash);
+            dict["AbilityComp"] = GetDefInfo(CompSerialization.abilityCompTypes, TypeHash);
+            dict["WorldObjectComp"] = GetDefInfo(CompSerialization.worldObjectCompTypes, TypeHash);
+            dict["HediffComp"] = GetDefInfo(CompSerialization.hediffCompTypes, TypeHash);
+            dict["GameComponent"] = GetDefInfo(CompSerialization.gameCompTypes, TypeHash);
+            dict["WorldComponent"] = GetDefInfo(CompSerialization.worldCompTypes, TypeHash);
+            dict["MapComponent"] = GetDefInfo(CompSerialization.mapCompTypes, TypeHash);
 
-            dict["GameComponent"] = GetDefInfo(ImplSerialization.gameCompTypes, TypeHash);
-            dict["WorldComponent"] = GetDefInfo(ImplSerialization.worldCompTypes, TypeHash);
-            dict["MapComponent"] = GetDefInfo(ImplSerialization.mapCompTypes, TypeHash);
+            foreach (var syncWithImplType in Multiplayer.serialization.syncWithImplTypes)
+                dict[syncWithImplType.Name] =
+                    GetDefInfo(Multiplayer.serialization.TypeHelper.GetImplementations(syncWithImplType), TypeHash);
+
+            dict["ISyncSimple"] = GetDefInfo(ApiSerialization.syncSimples, TypeHash);
+            dict["ISession"] = GetDefInfo(ApiSerialization.sessions, TypeHash);
 
             dict["PawnBio"] = GetDefInfo(SolidBioDatabase.allBios, b => b.name.GetHashCode());
 

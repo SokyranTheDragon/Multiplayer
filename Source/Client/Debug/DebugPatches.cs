@@ -18,15 +18,10 @@ namespace Multiplayer.Client.Patches
     {
         public static void Init()
         {
-            /*harmony.Patch(
-                AccessTools.PropertyGetter(typeof(Faction), nameof(Faction.OfPlayer)),
-                new HarmonyMethod(typeof(MultiplayerMod), nameof(Prefixfactionman))
-            );
-
-            harmony.Patch(
-                AccessTools.PropertyGetter(typeof(Faction), nameof(Faction.IsPlayer)),
-                new HarmonyMethod(typeof(MultiplayerMod), nameof(Prefixfactionman))
-            );*/
+            // Multiplayer.harmony.Patch(
+            //     AccessTools.PropertyGetter(typeof(Find), nameof(Find.FactionManager)),
+            //     new HarmonyMethod(typeof(DebugPatches), nameof(Prefixfactionman))
+            // );
         }
 
         static void Prefixfactionman()
@@ -34,10 +29,13 @@ namespace Multiplayer.Client.Patches
             if (Scribe.mode != LoadSaveMode.Inactive)
             {
                 string trace = new StackTrace().ToString();
-                if (!trace.Contains("SetInitialPsyfocusLevel") &&
+                if (
                     !trace.Contains("Pawn_NeedsTracker.ShouldHaveNeed") &&
-                    !trace.Contains("FactionManager.ExposeData"))
-                    Log.Message($"factionman call {trace}", true);
+                    !trace.Contains("FactionManager.ExposeData") &&
+                    !trace.Contains("Client.FactionContext") &&
+                    !trace.Contains("Thing.ExposeData")
+                )
+                    Log.Message($"factionman call {trace}");
             }
         }
     }
@@ -177,7 +175,7 @@ namespace Multiplayer.Client.Patches
         {
             // On Windows, Debug.Log used by Verse.Log replaces \n with \r\n
             // Without this patch printing \r\n results in \r\r\n
-            if (Native.Windows)
+            if (Application.platform == RuntimePlatform.WindowsPlayer)
                 text = text?.Replace("\r\n", "\n");
         }
     }
@@ -247,6 +245,15 @@ namespace Multiplayer.Client.Patches
         // ResolutionUtility.Update changes the resolution when it's too small and saves Prefs
         // This is annoying because it throws an exception when two clients write to the same file
         static bool Prefix() => false;
+    }
+
+    [HarmonyPatch(typeof(Log), nameof(Log.Notify_MessageReceivedThreadedInternal))]
+    static class DisableLogMessageLimit
+    {
+        static bool Prefix()
+        {
+            return false;
+        }
     }
 
 }

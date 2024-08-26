@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Multiplayer.Client.Patches;
 using UnityEngine;
 using Verse;
 using Verse.AI;
@@ -68,41 +69,6 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client != null)
                 __result = false;
-        }
-    }
-
-    [HarmonyPatch(typeof(AutoBuildRoofAreaSetter))]
-    [HarmonyPatch(nameof(AutoBuildRoofAreaSetter.TryGenerateAreaNow))]
-    public static class AutoRoofPatch
-    {
-        static bool Prefix(AutoBuildRoofAreaSetter __instance, Room room, ref Map __state)
-        {
-            if (Multiplayer.Client == null) return true;
-            if (room.Dereferenced || room.TouchesMapEdge || room.RegionCount > 26 || room.CellCount > 320 || room.IsDoorway) return false;
-
-            Map map = room.Map;
-            Faction faction = null;
-
-            foreach (IntVec3 cell in room.BorderCells)
-            {
-                Thing holder = cell.GetRoofHolderOrImpassable(map);
-                if (holder == null || holder.Faction == null) continue;
-                if (faction != null && holder.Faction != faction) return false;
-                faction = holder.Faction;
-            }
-
-            if (faction == null) return false;
-
-            map.PushFaction(faction);
-            __state = map;
-
-            return true;
-        }
-
-        static void Postfix(ref Map __state)
-        {
-            if (__state != null)
-                __state.PopFaction();
         }
     }
 
@@ -243,23 +209,23 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(Pawn), nameof(Pawn.SpawnSetup))]
     static class PawnSpawnSetupMarker
     {
-        public static bool respawningAfterLoad;
+        public static bool currentlyRespawningAfterLoad;
 
         static void Prefix(bool respawningAfterLoad)
         {
-            PawnSpawnSetupMarker.respawningAfterLoad = respawningAfterLoad;
+            currentlyRespawningAfterLoad = respawningAfterLoad;
         }
 
         static void Finalizer()
         {
-            respawningAfterLoad = false;
+            currentlyRespawningAfterLoad = false;
         }
     }
 
     [HarmonyPatch(typeof(Pawn_PathFollower), nameof(Pawn_PathFollower.ResetToCurrentPosition))]
     static class PatherResetPatch
     {
-        static bool Prefix() => !PawnSpawnSetupMarker.respawningAfterLoad;
+        static bool Prefix() => !PawnSpawnSetupMarker.currentlyRespawningAfterLoad;
     }
 
     [HarmonyPatch(typeof(Game), nameof(Game.LoadGame))]
@@ -280,7 +246,7 @@ namespace Multiplayer.Client
         static void Finalizer() => starting = false;
     }
 
-    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), new[] { typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool) })]
+    [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), new[] { typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(Action) })]
     static class CancelRootPlayStartLongEvents
     {
         public static bool cancel;
@@ -298,7 +264,7 @@ namespace Multiplayer.Client
         static bool Prefix() => LongEventHandler.eventQueue.All(e => e.eventTextKey == "MpLoading");
     }
 
-    [HarmonyPatch(typeof(ScreenFader), nameof(ScreenFader.StartFade))]
+    [HarmonyPatch(typeof(ScreenFader), nameof(ScreenFader.StartFade), typeof(Color), typeof(float), typeof(float))]
     static class DisableScreenFade2
     {
         static bool Prefix() => LongEventHandler.eventQueue.All(e => e.eventTextKey == "MpLoading");
@@ -308,69 +274,6 @@ namespace Multiplayer.Client
     static class DontEnlistNonSaveableThings
     {
         static bool Prefix(Thing t) => t.def.isSaveable;
-    }
-
-    [HarmonyPatch(typeof(MapGenerator), nameof(MapGenerator.GenerateMap))]
-    static class BeforeMapGeneration
-    {
-        static void Prefix(ref Action<Map> extraInitBeforeContentGen)
-        {
-            if (Multiplayer.Client == null) return;
-            extraInitBeforeContentGen += SetupMap;
-        }
-
-        static void Postfix()
-        {
-            if (Multiplayer.Client == null) return;
-
-            Log.Message("Unique ids " + Multiplayer.GlobalIdBlock.currentWithinBlock);
-            Log.Message("Rand " + Rand.StateCompressed);
-        }
-
-        public static void SetupMap(Map map)
-        {
-            Log.Message("New map " + map.uniqueID);
-            Log.Message("Unique ids " + Multiplayer.GlobalIdBlock.currentWithinBlock);
-            Log.Message("Rand " + Rand.StateCompressed);
-
-            var async = new AsyncTimeComp(map);
-            Multiplayer.game.asyncTimeComps.Add(async);
-
-            var mapComp = new MultiplayerMapComp(map);
-            Multiplayer.game.mapComps.Add(mapComp);
-
-            InitFactionDataFromMap(map, Faction.OfPlayer);
-
-            async.mapTicks = Find.Maps.Where(m => m != map).Select(m => m.AsyncTime()?.mapTicks).Max() ?? Find.TickManager.TicksGame;
-            async.storyteller = new Storyteller(Find.Storyteller.def, Find.Storyteller.difficultyDef, Find.Storyteller.difficulty);
-            async.storyWatcher = new StoryWatcher();
-
-            if (!Multiplayer.GameComp.asyncTime)
-                async.TimeSpeed = Find.TickManager.CurTimeSpeed;
-        }
-
-        public static void InitFactionDataFromMap(Map map, Faction f)
-        {
-            var mapComp = map.MpComp();
-            mapComp.factionData[f.loadID] = FactionMapData.NewFromMap(map, f.loadID);
-
-            var customData = mapComp.customFactionData[f.loadID] = CustomFactionMapData.New(f.loadID, map);
-
-            foreach (var t in map.listerThings.AllThings)
-                if (t is ThingWithComps tc &&
-                    tc.GetComp<CompForbiddable>() is { forbiddenInt: false })
-                    customData.unforbidden.Add(t);
-        }
-
-        public static void InitNewMapFactionData(Map map, Faction f)
-        {
-            var mapComp = map.MpComp();
-
-            mapComp.factionData[f.loadID] = FactionMapData.New(f.loadID, map);
-            mapComp.factionData[f.loadID].areaManager.AddStartingAreas();
-
-            mapComp.customFactionData[f.loadID] = CustomFactionMapData.New(f.loadID, map);
-        }
     }
 
     [HarmonyPatch(typeof(IncidentDef), nameof(IncidentDef.TargetAllowed))]
@@ -453,7 +356,7 @@ namespace Multiplayer.Client
         {
             if (Multiplayer.Client == null) return;
 
-            // Ignore pause
+            // Ignore unpausing
             if (__result && __instance.active && WorldRendererUtility.WorldRenderedNow)
                 __result = false;
         }
@@ -479,11 +382,11 @@ namespace Multiplayer.Client
         static bool Prefix(Pawn_WorkSettings __instance, WorkTypeDef w, int priority) => __instance.GetPriority(w) != priority;
     }
 
-    [HarmonyPatch(typeof(Pawn_PlayerSettings), nameof(Pawn_PlayerSettings.AreaRestriction), MethodType.Setter)]
+    [HarmonyPatch(typeof(Pawn_PlayerSettings), nameof(Pawn_PlayerSettings.AreaRestrictionInPawnCurrentMap), MethodType.Setter)]
     static class AreaRestrictionSameValue
     {
         [HarmonyPriority(MpPriority.MpFirst + 1)]
-        static bool Prefix(Pawn_PlayerSettings __instance, Area value) => __instance.AreaRestriction != value;
+        static bool Prefix(Pawn_PlayerSettings __instance, Area value) => __instance.AreaRestrictionInPawnCurrentMap != value;
     }
 
     [HarmonyPatch]
@@ -524,7 +427,7 @@ namespace Multiplayer.Client
     }
 
     [HarmonyPatch(typeof(MoteMaker), nameof(MoteMaker.MakeStaticMote))]
-    [HarmonyPatch(new[] {typeof(Vector3), typeof(Map), typeof(ThingDef), typeof(float), typeof(bool)})]
+    [HarmonyPatch(new[] {typeof(Vector3), typeof(Map), typeof(ThingDef), typeof(float), typeof(bool), typeof(float)})]
     static class FixNullMotes
     {
         static Dictionary<Type, Mote> cache = new();
@@ -622,5 +525,69 @@ namespace Multiplayer.Client
             if (Multiplayer.Client != null && __state != DebugSettings.godMode)
                 Multiplayer.GameComp.SetGodMode(Multiplayer.session.playerId, DebugSettings.godMode);
         }
+    }
+
+    [HarmonyPatch(typeof(Game), nameof(Game.LoadGame))]
+    static class AllowCurrentMapNullWhenLoading
+    {
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
+        {
+            var list = insts.ToList();
+
+            var strIndex = list.FirstIndexOf(i =>
+                "Current map is null after loading but there are maps available. Setting current map to [0].".Equals(i.operand)
+            );
+
+            // Remove Log.Error(str) call and setting value=0
+            list.RemoveAt(strIndex);
+            list.RemoveAt(strIndex);
+            list.RemoveAt(strIndex);
+            list.RemoveAt(strIndex);
+
+            return list;
+        }
+    }
+
+    [HarmonyPatch(typeof(PawnTextureAtlas), MethodType.Constructor)]
+    static class PawnTextureAtlasCtorPatch
+    {
+        static void Postfix(PawnTextureAtlas __instance)
+        {
+            // Pawn ids can change during deserialization when fixing local (negative) ids in CrossRefHandler_Clear_Patch
+            __instance.frameAssignments = new Dictionary<Pawn, PawnTextureAtlasFrameSet>(
+                IdentityComparer<Pawn>.Instance
+            );
+        }
+    }
+
+    [HarmonyPatch]
+    public static class StoragesKeepsTheirOwners
+    {
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(CompBiosculpterPod), nameof(CompBiosculpterPod.PostExposeData))]
+        static void PostCompBiosculpterPod(CompBiosculpterPod __instance)
+            => FixStorage(__instance, __instance.allowedNutritionSettings);
+
+        [HarmonyPostfix]
+        [HarmonyPatch(typeof(CompChangeableProjectile), nameof(CompChangeableProjectile.PostExposeData))]
+        static void PostCompChangeableProjectile(CompChangeableProjectile __instance)
+            => FixStorage(__instance, __instance.allowedShellsSettings);
+
+        // Fix syncing of copy/paste due to null StorageSettings.owner by assigning the parent
+        // in ExposeData. The patched types omit passing/assigning self as the owner by passing
+        // Array.Empty<object>() as the argument to expose data on StorageSetting.
+        static void FixStorage(IStoreSettingsParent __instance, StorageSettings ___allowedNutritionSettings)
+        {
+            if (Scribe.mode == LoadSaveMode.PostLoadInit)
+                ___allowedNutritionSettings.owner ??= __instance;
+        }
+    }
+
+    [HarmonyPatch(typeof(MoteAttachLink), nameof(MoteAttachLink.UpdateDrawPos))]
+    static class MoteAttachLinkUsesTruePosition
+    {
+        static void Prefix() => DrawPosPatch.returnTruePosition = true;
+
+        static void Finalizer() => DrawPosPatch.returnTruePosition = false;
     }
 }

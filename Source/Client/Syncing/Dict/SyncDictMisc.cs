@@ -22,7 +22,7 @@ namespace Multiplayer.Client
             #region System
             {
                 (ByteWriter data, Type type) => data.WriteString(type.FullName),
-                (ByteReader data) => AccessTools.TypeByName(data.ReadString())
+                (ByteReader data) => AccessTools.TypeByName(data.ReadStringNullable())
             },
             #endregion
 
@@ -56,7 +56,7 @@ namespace Multiplayer.Client
                     data.WriteString(name.nameInt);
                     data.WriteBool(name.numerical);
                 },
-                (ByteReader data) => new NameSingle(data.ReadString(), data.ReadBool())
+                (ByteReader data) => new NameSingle(data.ReadStringNullable(), data.ReadBool())
             },
             {
                 (ByteWriter data, NameTriple name) => {
@@ -64,7 +64,7 @@ namespace Multiplayer.Client
                     data.WriteString(name.nickInt);
                     data.WriteString(name.lastInt);
                 },
-                (ByteReader data) => new NameTriple(data.ReadString(), data.ReadString(), data.ReadString())
+                (ByteReader data) => new NameTriple(data.ReadStringNullable(), data.ReadStringNullable(), data.ReadStringNullable())
             },
             #endregion
 
@@ -73,7 +73,7 @@ namespace Multiplayer.Client
                 (ByteWriter data, TaggedString str) => {
                     data.WriteString(str.rawText);
                 },
-                (ByteReader data) => new TaggedString(data.ReadString())
+                (ByteReader data) => new TaggedString(data.ReadStringNullable())
             },
             {
                 (SyncWorker worker, ref ColorInt color) =>
@@ -111,6 +111,48 @@ namespace Multiplayer.Client
                         rect.width = worker.Read<float>();
                         rect.height = worker.Read<float>();
                     }
+                }
+            },
+            #endregion
+
+            #region Structs
+            {
+                (ByteWriter data, Rot4 rot) => data.WriteByte(rot.AsByte),
+                (ByteReader data) => new Rot4(data.ReadByte())
+            },
+            {
+                (ByteWriter data, IntVec3 vec) => {
+                    if (vec.y < 0) {
+                        data.WriteShort(-1);
+                    }
+                    else {
+                        data.WriteShort((short)vec.y);
+                        data.WriteShort((short)vec.x);
+                        data.WriteShort((short)vec.z);
+                    }
+                },
+                (ByteReader data) => {
+                    short y = data.ReadShort();
+                    if (y < 0)
+                        return IntVec3.Invalid;
+
+                    short x = data.ReadShort();
+                    short z = data.ReadShort();
+
+                    return new IntVec3(x, y, z);
+                }
+            },
+            {
+                (SyncWorker sync, ref Vector2 vec)  => {
+                    sync.Bind(ref vec.x);
+                    sync.Bind(ref vec.y);
+                }
+            },
+            {
+                (SyncWorker sync, ref Vector3 vec)  => {
+                    sync.Bind(ref vec.x);
+                    sync.Bind(ref vec.y);
+                    sync.Bind(ref vec.z);
                 }
             },
             #endregion

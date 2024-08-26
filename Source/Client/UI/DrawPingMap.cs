@@ -14,10 +14,10 @@ namespace Multiplayer.Client
 
             var size = Math.Min(UI.CurUICellSize() * 4, 32f);
 
-            foreach (var ping in Multiplayer.session.cursorAndPing.pings)
+            foreach (var ping in Multiplayer.session.locationPings.pings)
             {
                 if (ping.mapId != Find.CurrentMap.uniqueID) continue;
-                if (Multiplayer.session.GetPlayerInfo(ping.player) is not { } player) continue;
+                if (ping.PlayerInfo is not { } player) continue;
 
                 ping.DrawAt(ping.mapLoc.MapToUIPosition(), player.color, size);
             }

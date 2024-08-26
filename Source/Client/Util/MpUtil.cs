@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -11,7 +10,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text;
 using HarmonyLib;
-using MonoMod.RuntimeDetour;
 using Verse;
 
 namespace Multiplayer.Client
@@ -109,7 +107,7 @@ namespace Multiplayer.Client
             // Todo: this is using a non-public API of Harmony, we should refactor to use https://harmony.pardeike.net/api/HarmonyLib.Harmony.html#HarmonyLib_Harmony_GetOriginalMethod_System_Reflection_MethodInfo_
             // as pardeike suggested in https://github.com/rwmt/Multiplayer/pull/270#issuecomment-1003298289
             return HarmonySharedState.originals
-                .FirstOrDefault(kv => kv.Key.GetNativeStart().ToInt64() == replacementAddr).Value;
+                .FirstOrDefault(kv => kv.Key.MethodHandle.GetFunctionPointer().ToInt64() == replacementAddr).Value;
         }
 
         public static string JoinStringsAtMost(this IEnumerable<string> strs, int atMost = 3)
@@ -178,9 +176,9 @@ namespace Multiplayer.Client
         }
     }
 
-    public class DefaultComparer<T> : IEqualityComparer<T>
+    public class IdentityComparer<T> : IEqualityComparer<T>
     {
-        public static DefaultComparer<T> Instance = new DefaultComparer<T>();
+        public static IdentityComparer<T> Instance = new();
 
         public bool Equals(T x, T y)
         {
@@ -220,34 +218,4 @@ namespace Multiplayer.Client
             return q.GetEnumerator();
         }
     }
-
-    public class ConcurrentSet<T> : IEnumerable<T>
-    {
-        private ConcurrentDictionary<T, object> dict = new ConcurrentDictionary<T, object>();
-
-        public void Add(T t)
-        {
-            dict[t] = null;
-        }
-
-        public IEnumerator<T> GetEnumerator()
-        {
-            return dict.Keys.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return dict.Keys.GetEnumerator();
-        }
-    }
-
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-    public class HotSwappableAttribute : Attribute
-    {
-        public HotSwappableAttribute()
-        {
-
-        }
-    }
-
 }

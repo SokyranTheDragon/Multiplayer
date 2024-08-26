@@ -19,7 +19,7 @@ namespace Multiplayer.Client
         {
             if (done) return;
             GUI.skin.font = Text.fontStyles[1].font;
-            Text.fontStyles[1].font.fontNames = new string[] { "arial", "arialbd", "ariali", "arialbi" };
+            Text.fontStyles[1].font.fontNames = new[] { "arial", "arialbd", "ariali", "arialbi" };
             done = true;
         }
     }
@@ -58,9 +58,10 @@ namespace Multiplayer.Client
     {
         public const int LongEventWindowId = 62893994;
 
+        // ReSharper disable once InconsistentNaming
         static void Postfix(int ID)
         {
-            if (ID == -LongEventWindowId || ID == -IngameUIPatch.ModalWindowId)
+            if (ID == -LongEventWindowId || ID == -IngameModal.ModalWindowId)
             {
                 var window = Find.WindowStack.windows.Find(w => w.ID == ID);
 
@@ -78,7 +79,7 @@ namespace Multiplayer.Client
             if (Current.ProgramState == ProgramState.Entry) return;
 
             if (__instance.ID == -LongEventWindowPreventCameraMotion.LongEventWindowId ||
-                __instance.ID == -IngameUIPatch.ModalWindowId ||
+                __instance.ID == -IngameModal.ModalWindowId ||
                 __instance is DisconnectedWindow ||
                 __instance is CaravanFormingProxy
             )
@@ -128,6 +129,20 @@ namespace Multiplayer.Client
         {
             if (force)
                 edited = Widgets.ToStringTypedIn(val);
+        }
+    }
+
+    // Fix a lag spike when spawning/destroying things which affect the exit grid
+    [HarmonyPatch(typeof(ExitMapGrid), nameof(ExitMapGrid.Grid), MethodType.Getter)]
+    static class ExitMapGridPatch
+    {
+        static bool Prefix(ExitMapGrid __instance, ref BoolGrid __result)
+        {
+            // A copy of the getter without a costly call to MapUsesExitGrid
+            if (__instance.dirty)
+                __instance.Rebuild();
+            __result = __instance.exitMapGrid;
+            return false;
         }
     }
 

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Multiplayer.Common
@@ -17,8 +19,7 @@ namespace Multiplayer.Common
         [PacketHandler(Packets.Client_RequestRejoin)]
         public void HandleRejoin(ByteReader data)
         {
-            connection.State = ConnectionStateEnum.ServerJoining;
-            connection.Send(Packets.Server_CanRejoin);
+            connection.ChangeState(ConnectionStateEnum.ServerLoading);
             Player.ResetTimeVotes();
         }
 
@@ -50,7 +51,8 @@ namespace Multiplayer.Common
         {
             CommandType cmd = (CommandType)data.ReadInt32();
             int mapId = data.ReadInt32();
-            byte[] extra = data.ReadPrefixedBytes(65535);
+            byte[]? extra = data.ReadPrefixedBytes(65535);
+            if (extra == null) return;
 
             // todo check if map id is valid for the player
 
@@ -71,20 +73,7 @@ namespace Multiplayer.Common
             if (msg[0] == '/')
             {
                 var cmd = msg.Substring(1);
-                var parts = cmd.Split(' ');
-                var handler = Server.GetChatCmdHandler(parts[0]);
-
-                if (handler != null)
-                {
-                    if (handler.requiresHost && !Player.IsHost)
-                        Player.SendChat("No permission");
-                    else
-                        handler.Handle(Player, parts.SubArray(1));
-                }
-                else
-                {
-                    Player.SendChat("Invalid command");
-                }
+                Server.HandleChatCmd(Player, cmd);
             }
             else
             {
@@ -96,28 +85,31 @@ namespace Multiplayer.Common
         [IsFragmented]
         public void HandleWorldDataUpload(ByteReader data)
         {
-            var arbiter = Server.ArbiterPlaying;
-            if (arbiter && !Player.IsArbiter) return;
-            if (!arbiter && !Player.IsHost) return;
+            if (Server.ArbiterPlaying ? !Player.IsArbiter : !Player.IsHost) // policy
+                return;
+
+            ServerLog.Log($"Got world upload {data.Left}");
+
+            Server.worldData.mapData = new Dictionary<int, byte[]>();
 
             int maps = data.ReadInt32();
             for (int i = 0; i < maps; i++)
             {
                 int mapId = data.ReadInt32();
-                Server.mapData[mapId] = data.ReadPrefixedBytes();
+                Server.worldData.mapData[mapId] = data.ReadPrefixedBytes();
             }
 
-            Server.savedGame = data.ReadPrefixedBytes();
-            Server.semiPersistent = data.ReadPrefixedBytes();
+            Server.worldData.savedGame = data.ReadPrefixedBytes();
+            Server.worldData.sessionData = data.ReadPrefixedBytes();
 
-            if (Server.CreatingJoinPoint)
-                Server.EndJoinPointCreation();
+            if (Server.worldData.CreatingJoinPoint)
+                Server.worldData.EndJoinPointCreation();
         }
 
         [PacketHandler(Packets.Client_Cursor)]
         public void HandleCursor(ByteReader data)
         {
-            if (Player.lastCursorTick == Server.NetTimer) return;
+            if (Player.lastCursorTick == Server.NetTimer) return; // policy
 
             var writer = new ByteWriter();
 
@@ -150,7 +142,7 @@ namespace Multiplayer.Common
 
             Player.lastCursorTick = Server.NetTimer;
 
-            Server.SendToAll(Packets.Server_Cursor, writer.ToArray(), reliable: false, excluding: Player);
+            Server.SendToPlaying(Packets.Server_Cursor, writer.ToArray(), reliable: false, excluding: Player);
         }
 
         [PacketHandler(Packets.Client_Selected)]
@@ -165,7 +157,7 @@ namespace Multiplayer.Common
             writer.WritePrefixedInts(data.ReadPrefixedInts(200));
             writer.WritePrefixedInts(data.ReadPrefixedInts(200));
 
-            Server.SendToAll(Packets.Server_Selected, writer.ToArray(), excluding: Player);
+            Server.SendToPlaying(Packets.Server_Selected, writer.ToArray(), excluding: Player);
         }
 
         [PacketHandler(Packets.Client_PingLocation)]
@@ -181,23 +173,7 @@ namespace Multiplayer.Common
             writer.WriteFloat(data.ReadFloat()); // Y
             writer.WriteFloat(data.ReadFloat()); // Z
 
-            Server.SendToAll(Packets.Server_PingLocation, writer.ToArray());
-        }
-
-        [PacketHandler(Packets.Client_IdBlockRequest)]
-        public void HandleIdBlockRequest(ByteReader data)
-        {
-            int mapId = data.ReadInt32();
-
-            if (mapId == ScheduledCommand.Global)
-            {
-                //IdBlock nextBlock = MultiplayerServer.instance.NextIdBlock();
-                //MultiplayerServer.instance.SendCommand(CommandType.GlobalIdBlock, ScheduledCommand.NoFaction, ScheduledCommand.Global, nextBlock.Serialize());
-            }
-            else
-            {
-                // todo
-            }
+            Server.SendToPlaying(Packets.Server_PingLocation, writer.ToArray());
         }
 
         [PacketHandler(Packets.Client_KeepAlive)]
@@ -209,6 +185,7 @@ namespace Multiplayer.Common
             var workTicks = data.ReadInt32();
 
             Player.ticksBehind = ticksBehind;
+            Player.ticksBehindReceivedAt = Server.gameTimer;
             Player.simulating = simulating;
             Player.keepAliveAt = Server.NetTimer;
 
@@ -232,14 +209,14 @@ namespace Multiplayer.Common
         public void HandleDesyncCheck(ByteReader data)
         {
             var arbiter = Server.ArbiterPlaying;
-            if (arbiter ? !Player.IsArbiter : !Player.IsHost) return;
+            if (arbiter ? !Player.IsArbiter : !Player.IsHost) return; // policy
 
             var raw = data.ReadRaw(data.Left);
 
             // Keep at most 10 sync infos
-            Server.syncInfos.Add(raw);
-            if (Server.syncInfos.Count > 10)
-                Server.syncInfos.RemoveAt(0);
+            Server.worldData.syncInfos.Add(raw);
+            if (Server.worldData.syncInfos.Count > 10)
+                Server.worldData.syncInfos.RemoveAt(0);
 
             foreach (var p in Server.PlayingPlayers.Where(p => !p.IsArbiter && (arbiter || !p.IsHost)))
                 p.conn.SendFragmented(Packets.Server_SyncInfo, raw);
@@ -258,25 +235,36 @@ namespace Multiplayer.Common
         [PacketHandler(Packets.Client_Autosaving)]
         public void HandleAutosaving(ByteReader data)
         {
+            // Host policy
             if (Player.IsHost && Server.settings.autoJoinPoint.HasFlag(AutoJoinPointFlags.Autosave))
-                Server.TryStartJoinPointCreation();
+                Server.worldData.TryStartJoinPointCreation();
         }
 
         [PacketHandler(Packets.Client_Debug)]
         public void HandleDebug(ByteReader data)
         {
+            // todo restrict handling
+
+            Server.worldData.mapCmds.Clear();
+            Server.gameTimer = Server.startingTimer;
+
+            Server.SendToPlaying(Packets.Server_Debug, Array.Empty<object>());
         }
 
         [PacketHandler(Packets.Client_SetFaction)]
         public void HandleSetFaction(ByteReader data)
         {
-            if (!Player.IsHost) return;
+            // todo restrict handling
 
-            int player = data.ReadInt32();
+            int playerId = data.ReadInt32();
             int factionId = data.ReadInt32();
 
-            Server.GetPlayer(player).FactionId = factionId;
-            Server.SendToAll(Packets.Server_SetFaction, new object[] { player, factionId });
+            var player = Server.GetPlayer(playerId);
+            if (player == null) return;
+            if (player.FactionId == factionId) return;
+
+            player.FactionId = factionId;
+            Server.SendToPlaying(Packets.Server_SetFaction, new object[] { playerId, factionId });
         }
 
         [PacketHandler(Packets.Client_FrameTime)]

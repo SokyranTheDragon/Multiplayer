@@ -1,5 +1,4 @@
 using Multiplayer.API;
-using Multiplayer.Client.Persistent;
 using RimWorld;
 using RimWorld.Planet;
 using System;
@@ -8,11 +7,10 @@ using Verse;
 
 namespace Multiplayer.Client
 {
-    public class CaravanFormingSession : IExposable, ISessionWithTransferables, IPausingWithDialog
+    public class CaravanFormingSession : ExposableSession, ISessionWithTransferables, ISessionWithCreationRestrictions
     {
         public Map map;
 
-        public int sessionId;
         public bool reform;
         public Action onClosed;
         public bool mapAboutToBeRemoved;
@@ -20,33 +18,33 @@ namespace Multiplayer.Client
         public int destinationTile = -1;
         public List<TransferableOneWay> transferables;
         public bool autoSelectTravelSupplies;
+        public IntVec3? meetingSpot;
 
         public bool uiDirty;
 
-        public Map Map => map;
-        public int SessionId => sessionId;
+        public override Map Map => map;
 
-        public CaravanFormingSession(Map map)
+        public CaravanFormingSession(Map map) : base(map)
         {
             this.map = map;
         }
 
-        public CaravanFormingSession(Map map, bool reform, Action onClosed, bool mapAboutToBeRemoved) : this(map)
+        public CaravanFormingSession(Map map, bool reform, Action onClosed, bool mapAboutToBeRemoved, IntVec3? meetingSpot = null) : this(map)
         {
-            //sessionId = map.MpComp().mapIdBlock.NextId();
-            sessionId = Multiplayer.GlobalIdBlock.NextId();
-
             this.reform = reform;
             this.onClosed = onClosed;
             this.mapAboutToBeRemoved = mapAboutToBeRemoved;
             autoSelectTravelSupplies = !reform;
+            this.meetingSpot = meetingSpot;
 
+            // Should this be called from PostAddSession? It would also be called from the other constructor
+            // (map only parameter) - do we want that to happen? Is it going to come up?
             AddItems();
         }
 
         private void AddItems()
         {
-            var dialog = new CaravanFormingProxy(map, reform, null, mapAboutToBeRemoved)
+            var dialog = new CaravanFormingProxy(sessionId, map, reform, null, mapAboutToBeRemoved, meetingSpot)
             {
                 autoSelectTravelSupplies = autoSelectTravelSupplies
             };
@@ -54,7 +52,7 @@ namespace Multiplayer.Client
             transferables = dialog.transferables;
         }
 
-        public void OpenWindow(bool sound = true)
+        public CaravanFormingProxy OpenWindow(bool sound = true)
         {
             var dialog = PrepareDummyDialog();
             if (!sound)
@@ -74,13 +72,14 @@ namespace Multiplayer.Client
             );
 
             dialog.Notify_TransferablesChanged();
-
             Find.WindowStack.Add(dialog);
+
+            return dialog;
         }
 
         private CaravanFormingProxy PrepareDummyDialog()
         {
-            var dialog = new CaravanFormingProxy(map, reform, null, mapAboutToBeRemoved)
+            var dialog = new CaravanFormingProxy(sessionId, map, reform, null, mapAboutToBeRemoved, meetingSpot)
             {
                 transferables = transferables,
                 startingTile = startingTile,
@@ -88,6 +87,9 @@ namespace Multiplayer.Client
                 thisWindowInstanceEverOpened = true,
                 autoSelectTravelSupplies = autoSelectTravelSupplies,
             };
+
+            if (autoSelectTravelSupplies)
+                dialog.SelectApproximateBestTravelSupplies();
 
             return dialog;
         }
@@ -133,10 +135,17 @@ namespace Multiplayer.Client
         }
 
         [SyncMethod]
-        public void Remove()
+        public void Cancel()
         {
-            map.MpComp().caravanForming = null;
-            Find.WorldRoutePlanner.Stop();
+            Remove();
+        }
+
+        private void Remove()
+        {
+            map.MpComp().sessionManager.RemoveSession(this);
+
+            if (Find.WorldRoutePlanner.currentFormCaravanDialog is CaravanFormingProxy proxy && proxy.originalSessionId == sessionId)
+                Find.WorldRoutePlanner.Stop();
         }
 
         [SyncMethod]
@@ -145,19 +154,21 @@ namespace Multiplayer.Client
             if (autoSelectTravelSupplies != value)
             {
                 autoSelectTravelSupplies = value;
-                PrepareDummyDialog().SelectApproximateBestTravelSupplies();
                 uiDirty = true;
             }
         }
 
-        public void ExposeData()
+        public override void ExposeData()
         {
-            Scribe_Values.Look(ref sessionId, "sessionId");
+            base.ExposeData();
+
             Scribe_Values.Look(ref reform, "reform");
             Scribe_Values.Look(ref onClosed, "onClosed");
             Scribe_Values.Look(ref mapAboutToBeRemoved, "mapAboutToBeRemoved");
             Scribe_Values.Look(ref startingTile, "startingTile");
             Scribe_Values.Look(ref destinationTile, "destinationTile");
+            Scribe_Values.Look(ref autoSelectTravelSupplies, "autoSelectTravelSupplies");
+            Scribe_Values.Look(ref meetingSpot, "meetingSpot");
 
             Scribe_Collections.Look(ref transferables, "transferables", LookMode.Deep);
         }
@@ -171,6 +182,18 @@ namespace Multiplayer.Client
         {
             uiDirty = true;
         }
+
+        public override bool IsCurrentlyPausing(Map map) => map == this.map;
+
+        public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry)
+        {
+            return new FloatMenuOption("MpCaravanFormingSession".Translate(), () =>
+            {
+                OpenWindow();
+            });
+        }
+
+        public bool CanExistWith(Session other) => other is not CaravanFormingSession;
     }
 
 }

@@ -1,3 +1,4 @@
+using Multiplayer.Client.Util;
 using RimWorld.Planet;
 using UnityEngine;
 using Verse;
@@ -32,7 +33,7 @@ namespace Multiplayer.Client.Persistent
             // Taken from Window.PostOpen, overriden to remove effects of Dialog_SplitCaravan.PostOpen
 
             if (soundAppear != null)
-                soundAppear.PlayOneShotOnCamera(null);
+                soundAppear.PlayOneShotOnCamera();
 
             if (soundAmbient != null)
                 sustainerAmbient = soundAmbient.TrySpawnSustainer(SoundInfo.OnCamera(MaintenanceType.PerFrame));
@@ -44,64 +45,73 @@ namespace Multiplayer.Client.Persistent
         /// </summary>
         public override void DoWindowContents(Rect inRect)
         {
-            if (session == null)
-            {
-                Close();
-            }
-            else if (session.uiDirty)
-            {
-                CountToTransferChanged();
+            SyncSessionWithTransferablesMarker.DrawnSessionWithTransferables = session;
 
-                session.uiDirty = false;
-            }
+            try
+            {
+                if (session == null)
+                {
+                    Close();
+                }
+                else if (session.uiDirty)
+                {
+                    CountToTransferChanged();
 
-            Rect rect = new Rect(0f, 0f, inRect.width, 35f);
-            Text.Font = GameFont.Medium;
-            Text.Anchor = TextAnchor.MiddleCenter;
-            Widgets.Label(rect, "SplitCaravan".Translate());
-            Text.Font = GameFont.Small;
-            Text.Anchor = TextAnchor.UpperLeft;
-            CaravanUIUtility.DrawCaravanInfo(new CaravanUIUtility.CaravanInfo(SourceMassUsage, SourceMassCapacity, cachedSourceMassCapacityExplanation, SourceTilesPerDay, cachedSourceTilesPerDayExplanation, SourceDaysWorthOfFood, SourceForagedFoodPerDay, cachedSourceForagedFoodPerDayExplanation, SourceVisibility, cachedSourceVisibilityExplanation, -1f, -1f, null), new CaravanUIUtility.CaravanInfo(DestMassUsage, DestMassCapacity, cachedDestMassCapacityExplanation, DestTilesPerDay, cachedDestTilesPerDayExplanation, DestDaysWorthOfFood, DestForagedFoodPerDay, cachedDestForagedFoodPerDayExplanation, DestVisibility, cachedDestVisibilityExplanation, -1f, -1f, null), caravan.Tile, (!caravan.pather.Moving) ? null : new int?(TicksToArrive), -9999f, new Rect(12f, 35f, inRect.width - 24f, 40f), true, null, false);
-            tabsList.Clear();
-            tabsList.Add(new TabRecord("PawnsTab".Translate(), delegate
-            {
-                tab = Tab.Pawns;
-            }, tab == Tab.Pawns));
-            tabsList.Add(new TabRecord("ItemsTab".Translate(), delegate
-            {
-                tab = Tab.Items;
-            }, tab == Tab.Items));
-            tabsList.Add(new TabRecord("FoodAndMedicineTab".Translate(), delegate
-            {
-                tab = Tab.FoodAndMedicine;
-            }, tab == Tab.FoodAndMedicine));
-            inRect.yMin += 119f;
-            Widgets.DrawMenuSection(inRect);
-            TabDrawer.DrawTabs(inRect, tabsList, 200f);
-            inRect = inRect.ContractedBy(17f);
-            GUI.BeginGroup(inRect);
-            Rect rect2 = inRect.AtZero();
-            DoBottomButtons(rect2);
-            Rect inRect2 = rect2;
-            inRect2.yMax -= 59f;
-            bool flag = false;
-            switch (tab)
-            {
-                case Tab.Pawns:
-                    pawnsTransfer.OnGUI(inRect2, out flag);
-                    break;
-                case Tab.Items:
-                    itemsTransfer.OnGUI(inRect2, out flag);
-                    break;
-                case Tab.FoodAndMedicine:
-                    foodAndMedicineTransfer.OnGUI(inRect2, out flag);
-                    break;
+                    session.uiDirty = false;
+                }
+
+                Rect rect = new Rect(0f, 0f, inRect.width, 35f);
+                Text.Font = GameFont.Medium;
+                Text.Anchor = TextAnchor.MiddleCenter;
+                Widgets.Label(rect, "SplitCaravan".Translate());
+                Text.Font = GameFont.Small;
+                Text.Anchor = TextAnchor.UpperLeft;
+                CaravanUIUtility.DrawCaravanInfo(new CaravanUIUtility.CaravanInfo(SourceMassUsage, SourceMassCapacity, cachedSourceMassCapacityExplanation, SourceTilesPerDay, cachedSourceTilesPerDayExplanation, SourceDaysWorthOfFood, SourceForagedFoodPerDay, cachedSourceForagedFoodPerDayExplanation, SourceVisibility, cachedSourceVisibilityExplanation), new CaravanUIUtility.CaravanInfo(DestMassUsage, DestMassCapacity, cachedDestMassCapacityExplanation, DestTilesPerDay, cachedDestTilesPerDayExplanation, DestDaysWorthOfFood, DestForagedFoodPerDay, cachedDestForagedFoodPerDayExplanation, DestVisibility, cachedDestVisibilityExplanation), caravan.Tile, caravan.pather.Moving ? TicksToArrive : null, -9999f, new Rect(12f, 35f, inRect.width - 24f, 40f));
+                tabsList.Clear();
+                tabsList.Add(new TabRecord("PawnsTab".Translate(), delegate
+                {
+                    tab = Tab.Pawns;
+                }, tab == Tab.Pawns));
+                tabsList.Add(new TabRecord("ItemsTab".Translate(), delegate
+                {
+                    tab = Tab.Items;
+                }, tab == Tab.Items));
+                tabsList.Add(new TabRecord("TravelSupplies".Translate(), delegate
+                {
+                    tab = Tab.FoodAndMedicine;
+                }, tab == Tab.FoodAndMedicine));
+                inRect.yMin += 119f;
+                Widgets.DrawMenuSection(inRect);
+                TabDrawer.DrawTabs(inRect, tabsList, 200f);
+                inRect = inRect.ContractedBy(17f);
+                Widgets.BeginGroup(inRect);
+                Rect rect2 = inRect.AtZero();
+                DoBottomButtons(rect2);
+                Rect inRect2 = rect2;
+                inRect2.yMax -= 59f;
+                bool flag = false;
+                switch (tab)
+                {
+                    case Tab.Pawns:
+                        pawnsTransfer.OnGUI(inRect2, out flag);
+                        break;
+                    case Tab.Items:
+                        itemsTransfer.OnGUI(inRect2, out flag);
+                        break;
+                    case Tab.FoodAndMedicine:
+                        foodAndMedicineTransfer.OnGUI(inRect2, out flag);
+                        break;
+                }
+                if (flag)
+                {
+                    CountToTransferChanged();
+                }
+                Widgets.EndGroup();
             }
-            if (flag)
+            finally
             {
-                CountToTransferChanged();
+                SyncSessionWithTransferablesMarker.DrawnSessionWithTransferables = null;
             }
-            GUI.EndGroup();
         }
 
         /// <summary>
@@ -111,39 +121,25 @@ namespace Multiplayer.Client.Persistent
         /// <param name="rect"></param>
         private new void DoBottomButtons(Rect rect)
         {
-            float num = rect.width / 2f;
-            Vector2 bottomButtonSize = BottomButtonSize;
-            float x = num - bottomButtonSize.x / 2f;
-            float y = rect.height - 55f;
-            Vector2 bottomButtonSize2 = BottomButtonSize;
-            float x2 = bottomButtonSize2.x;
-            Vector2 bottomButtonSize3 = BottomButtonSize;
-            Rect rect2 = new Rect(x, y, x2, bottomButtonSize3.y);
-            if (Widgets.ButtonText(rect2, "AcceptButton".Translate(), true, false, true))
+            Rect acceptRect = new Rect(rect.width / 2f - BottomButtonSize.x / 2f, rect.height - 55f, BottomButtonSize.x, BottomButtonSize.y);
+            if (Widgets.ButtonText(acceptRect, "AcceptButton".Translate(), true, false))
             {
                 AcceptButtonClicked();
             }
-            float num2 = rect2.x - 10f;
-            Vector2 bottomButtonSize4 = BottomButtonSize;
-            float x3 = num2 - bottomButtonSize4.x;
-            float y2 = rect2.y;
-            Vector2 bottomButtonSize5 = BottomButtonSize;
-            float x4 = bottomButtonSize5.x;
-            Vector2 bottomButtonSize6 = BottomButtonSize;
-            Rect rect3 = new Rect(x3, y2, x4, bottomButtonSize6.y);
-            if (Widgets.ButtonText(rect3, "ResetButton".Translate(), true, false, true))
+
+            Rect resetRect = new Rect(acceptRect.x - 10f - BottomButtonSize.x, acceptRect.y, BottomButtonSize.x, BottomButtonSize.y);
+            if (Widgets.ButtonText(resetRect, "ResetButton".Translate(), true, false))
             {
                 ResetButtonClicked();
             }
-            float x5 = rect2.xMax + 10f;
-            float y3 = rect2.y;
-            Vector2 bottomButtonSize7 = BottomButtonSize;
-            float x6 = bottomButtonSize7.x;
-            Vector2 bottomButtonSize8 = BottomButtonSize;
-            Rect rect4 = new Rect(x5, y3, x6, bottomButtonSize8.y);
-            if (Widgets.ButtonText(rect4, "CancelButton".Translate(), true, false, true))
+
+            using (MpStyle.Set(new Color(1f, 0.3f, 0.35f)))
             {
-                CancelButtonClicked();
+                Rect cancelRect = new Rect(acceptRect.xMax + 10f, acceptRect.y, BottomButtonSize.x, BottomButtonSize.y);
+                if (Widgets.ButtonText(cancelRect, "CancelButton".Translate(), true, false))
+                {
+                    CancelButtonClicked();
+                }
             }
         }
 

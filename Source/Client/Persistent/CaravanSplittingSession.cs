@@ -10,15 +10,9 @@ namespace Multiplayer.Client.Persistent
     /// <summary>
     /// Represents an active Caravan Split session. This session will track all the pawns and items being split.
     /// </summary>
-    public class CaravanSplittingSession : IExposable, ISessionWithTransferables, IPausingWithDialog
+    public class CaravanSplittingSession : ExposableSession, ISessionWithTransferables, ISessionWithCreationRestrictions
     {
-        private int sessionId;
-
-        /// <summary>
-        /// Uniquely identifies this ISessionWithTransferables
-        /// </summary>
-        public int SessionId => sessionId;
-        public Map Map => null;
+        public override Map Map => null;
 
         /// <summary>
         /// The list of items that can be transferred, along with their count.
@@ -40,14 +34,16 @@ namespace Multiplayer.Client.Persistent
         /// </summary>
         public CaravanSplittingProxy dialog;
 
+        public CaravanSplittingSession(Map map) : base(null)
+        {
+        }
+
         /// <summary>
         /// Handles creation of new CaravanSplittingSession.
-        /// Ensures a unique Id is given to this session and creates the dialog.
         /// </summary>
         /// <param name="caravan"></param>
-        public CaravanSplittingSession(Caravan caravan)
+        public CaravanSplittingSession(Caravan caravan) : base(null)
         {
-            sessionId = Multiplayer.GlobalIdBlock.NextId();
             Caravan = caravan;
 
             AddItems();
@@ -86,8 +82,7 @@ namespace Multiplayer.Client.Persistent
                 IgnorePawnsInventoryMode.Ignore,
                 () => dialog.DestMassCapacity - dialog.DestMassUsage,
                 false,
-                Caravan.Tile,
-                false
+                Caravan.Tile
             );
 
             dialog.CountToTransferChanged();
@@ -108,9 +103,9 @@ namespace Multiplayer.Client.Persistent
             return newProxy;
         }
 
-        public void ExposeData()
+        public override void ExposeData()
         {
-            Scribe_Values.Look(ref sessionId, "sessionId");
+            base.ExposeData();
             Scribe_Collections.Look(ref transferables, "transferables", LookMode.Deep);
         }
 
@@ -137,7 +132,7 @@ namespace Multiplayer.Client.Persistent
         [SyncMethod]
         public void CancelSplittingSession() {
             dialog.Close();
-            Multiplayer.WorldComp.splitSession = null;
+            Multiplayer.WorldComp.sessionManager.RemoveSession(this);
         }
 
         /// <summary>
@@ -161,8 +156,25 @@ namespace Multiplayer.Client.Persistent
             {
                 SoundDefOf.Tick_High.PlayOneShotOnCamera();
                 dialog.Close(false);
-                Multiplayer.WorldComp.splitSession = null;
+                Multiplayer.WorldComp.sessionManager.RemoveSession(this);
             }
         }
+
+        public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry)
+        {
+            if (!Caravan.pawns.Contains(entry.pawn))
+                return null;
+
+            return new FloatMenuOption("MpCaravanSplittingSession".Translate(), () =>
+            {
+                SwitchToMapOrWorld(entry.map);
+                CameraJumper.TryJumpAndSelect(entry.pawn);
+                OpenWindow();
+            });
+        }
+
+        public override bool IsCurrentlyPausing(Map map) => true;
+
+        public bool CanExistWith(Session other) => other is not CaravanSplittingSession;
     }
 }

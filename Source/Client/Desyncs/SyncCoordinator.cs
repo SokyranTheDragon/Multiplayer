@@ -1,8 +1,6 @@
-extern alias zip;
 using Multiplayer.Common;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using RimWorld;
 using Verse;
@@ -11,7 +9,6 @@ using Multiplayer.Client.Util;
 
 namespace Multiplayer.Client
 {
-
     public class SyncCoordinator
     {
         public bool ShouldCollect => !Multiplayer.IsReplay;
@@ -39,6 +36,8 @@ namespace Multiplayer.Client
         public int lastValidTick = -1;
         public bool arbiterWasPlayingOnLastValidTick;
 
+        private const int MaxBacklog = 30;
+
         /// <summary>
         /// Adds a client opinion to the <see cref="knownClientOpinions"/> list and checks that it matches the most recent currently in there. If not, a desync event is fired.
         /// </summary>
@@ -58,7 +57,7 @@ namespace Multiplayer.Client
             if (knownClientOpinions[0].isLocalClientsOpinion == newOpinion.isLocalClientsOpinion)
             {
                 knownClientOpinions.Add(newOpinion);
-                if (knownClientOpinions.Count > 30)
+                if (knownClientOpinions.Count > MaxBacklog)
                     RemoveAndClearFirst();
             }
             else
@@ -189,27 +188,25 @@ namespace Multiplayer.Client
         }
 
         /// <summary>
-        /// Logs the current stack so that in the event of a desync we have some stack traces.
+        /// Logs an item to aid in desync debugging.
         /// </summary>
-        /// <param name="info">Any additional message to be logged with the stack</param>
-        public void TryAddStackTraceForDesyncLog(string info = null)
+        /// <param name="info1">Information to be logged</param>
+        /// <param name="info2">Information to be logged</param>
+        public void TryAddInfoForDesyncLog(string info1, string info2)
         {
             if (!ShouldCollect) return;
 
             OpinionInBuilding.TryMarkSimulating();
 
-            //Get the current stack trace
-            var trace = new StackTrace(2, true);
-            var hash = trace.Hash() /*^ (info?.GetHashCode() ?? 0)*/;
+            int hash = Gen.HashCombineInt(info1.GetHashCode(), info2.GetHashCode());
 
             OpinionInBuilding.desyncStackTraces.Add(new StackTraceLogItemObj {
-                stackTrace = trace,
                 tick = TickPatch.Timer,
                 hash = hash,
-                additionalInfo = info,
+                info1 = info1,
+                info2 = info2,
             });
 
-            // Track & network trace hash, for comparison with other opinions.
             OpinionInBuilding.desyncStackTraceHashes.Add(hash);
         }
 
@@ -220,7 +217,8 @@ namespace Multiplayer.Client
             OpinionInBuilding.TryMarkSimulating();
 
             item.depth = depth;
-            item.iters = (int)Rand.iterations;
+            item.ticksGame = Find.TickManager.ticksGameInt;
+            item.rngState = Rand.StateCompressed;
             item.tick = TickPatch.Timer;
             item.factionName = Faction.OfPlayer?.Name ?? string.Empty;
             item.moreInfo = moreInfo;
@@ -232,7 +230,7 @@ namespace Multiplayer.Client
                 item.thingId = thing.thingIDNumber;
             }
 
-            var hash = Gen.HashCombineInt(hashIn, depth, item.iters, 1);
+            var hash = Gen.HashCombineInt(hashIn, depth, (int)(item.rngState >> 32), (int)item.rngState);
             item.hash = hash;
 
             OpinionInBuilding.desyncStackTraces.Add(item);

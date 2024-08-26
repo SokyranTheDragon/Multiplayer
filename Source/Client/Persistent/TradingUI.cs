@@ -61,12 +61,13 @@ namespace Multiplayer.Client
             inRect.yMin += 10f;
 
             var session = Multiplayer.WorldComp.trading[selectedTab];
-            if (session.sessionId != selectedSession)
+            if (session.SessionId != selectedSession)
             {
                 RecreateDialog();
-                selectedSession = session.sessionId;
+                selectedSession = session.SessionId;
             }
 
+            try
             {
                 MpTradeSession.SetTradeSession(session);
                 drawingTrade = this;
@@ -118,7 +119,9 @@ namespace Multiplayer.Client
                 }
 
                 session.giftMode = TradeSession.giftMode;
-
+            }
+            finally
+            {
                 drawingTrade = null;
                 MpTradeSession.SetTradeSession(null);
             }
@@ -152,20 +155,25 @@ namespace Multiplayer.Client
         {
             var session = Multiplayer.WorldComp.trading[selectedTab];
 
-            MpTradeSession.SetTradeSession(session);
+            try
+            {
+                MpTradeSession.SetTradeSession(session);
 
-            dialog = MpUtil.NewObjectNoCtor<Dialog_Trade>();
-            dialog.quickSearchWidget = new QuickSearchWidget();
-            dialog.giftsOnly = session.giftsOnly;
-            dialog.sorter1 = TransferableSorterDefOf.Category;
-            dialog.sorter2 = TransferableSorterDefOf.MarketValue;
-            dialog.CacheTradeables();
-            session.deal.uiShouldReset = UIShouldReset.None;
+                dialog = MpUtil.NewObjectNoCtor<Dialog_Trade>();
+                dialog.quickSearchWidget = new QuickSearchWidget();
+                dialog.giftsOnly = session.giftsOnly;
+                dialog.sorter1 = TransferableSorterDefOf.Category;
+                dialog.sorter2 = TransferableSorterDefOf.MarketValue;
+                dialog.CacheTradeables();
+                session.deal.uiShouldReset = UIShouldReset.None;
 
-            removed.Clear();
-            added.Clear();
-
-            MpTradeSession.SetTradeSession(null);
+                removed.Clear();
+                added.Clear();
+            }
+            finally
+            {
+                MpTradeSession.SetTradeSession(null);
+            }
         }
 
         public void Notify_RemovedSession(int index)
@@ -395,7 +403,7 @@ namespace Multiplayer.Client
             }
         }
 
-        static void Postfix(bool __state)
+        static void Finalizer(bool __state)
         {
             if (__state)
                 MpTradeSession.SetTradeSession(null);
@@ -419,7 +427,7 @@ namespace Multiplayer.Client
             return true;
         }
 
-        static void Postfix(bool __state)
+        static void Finalizer(bool __state)
         {
             if (__state)
                 MpTradeSession.SetTradeSession(null);
@@ -474,7 +482,7 @@ namespace Multiplayer.Client
             }
         }
 
-        static void Postfix(bool __state)
+        static void Finalizer(bool __state)
         {
             if (__state)
             {

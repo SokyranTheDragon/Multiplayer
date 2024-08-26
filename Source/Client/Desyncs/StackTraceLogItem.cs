@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text;
 using Multiplayer.Client.Desyncs;
 using Verse;
@@ -25,12 +24,12 @@ namespace Multiplayer.Client
 
     public class StackTraceLogItemObj : StackTraceLogItem
     {
-        public StackTrace stackTrace;
-        public string additionalInfo;
+        public string info1;
+        public string info2;
 
-        public override string AdditionalInfo => additionalInfo;
+        public override string AdditionalInfo => $"{info1} {info2}";
 
-        public override string StackTraceString { get => stackTrace.ToString(); }
+        public override string StackTraceString => "";
     }
 
     public class StackTraceLogItemRaw : StackTraceLogItem
@@ -38,15 +37,16 @@ namespace Multiplayer.Client
         public long[] raw = new long[DeferredStackTracingImpl.MaxDepth];
         public int depth;
 
-        public int iters;
+        public int ticksGame;
+        public ulong rngState;
         public ThingDef thingDef;
         public int thingId;
         public string factionName;
         public string moreInfo;
 
-        public override string AdditionalInfo => $"{thingDef}{thingId} {factionName} {depth} {iters} {moreInfo}";
+        public override string AdditionalInfo => $"{ticksGame} {thingDef}{thingId} {factionName} {depth} {rngState} {moreInfo}";
 
-        static Dictionary<long, string> methodNames = new Dictionary<long, string>();
+        private static Dictionary<long, string> methodNameCache = new();
 
         public override string StackTraceString
         {
@@ -57,8 +57,8 @@ namespace Multiplayer.Client
                 {
                     var addr = raw[i];
 
-                    if (!methodNames.TryGetValue(addr, out string method))
-                        methodNames[addr] = method = Native.MethodNameFromAddr(raw[i], false);
+                    if (!methodNameCache.TryGetValue(addr, out string method))
+                        methodNameCache[addr] = method = Native.MethodNameFromAddr(raw[i], false);
 
                     if (method != null)
                         builder.AppendLine(SyncCoordinator.MethodNameWithIL(method));
@@ -70,10 +70,16 @@ namespace Multiplayer.Client
             }
         }
 
+        public static StackTraceLogItemRaw GetFromPool()
+        {
+            return SimplePool<StackTraceLogItemRaw>.Get();
+        }
+
         public override void ReturnToPool()
         {
             depth = 0;
-            iters = 0;
+            ticksGame = 0;
+            rngState = 0;
             thingId = 0;
             thingDef = null;
             factionName = null;

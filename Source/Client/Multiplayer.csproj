@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>12</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <OutputPath>bin</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <ReleaseVersion>0.6.2</ReleaseVersion>
+    <PublicizeAsReferenceAssemblies>false</PublicizeAsReferenceAssemblies>
+    <RootNamespace>Multiplayer.Client</RootNamespace>
+    <AssemblyName>Multiplayer</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <Optimize>False</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\Languages\English\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Krafs.Publicizer" Version="2.2.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" ExcludeAssets="runtime" />
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.5.4104" />
+    <PackageReference Include="RestSharp" Version="106.12.0" />
+    <PackageReference Include="RimWorld.MultiplayerAPI" Version="0.5.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove=".editorconfig" />
+    <None Remove="mono_crash.*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Publicize Include="Assembly-CSharp;0Harmony;UnityEngine.IMGUIModule" />
+    <DoNotPublicize Include="0Harmony:System.Runtime.CompilerServices.DefaultInterpolatedStringHandler" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MultiplayerLoader\MultiplayerLoader.csproj" />
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+
+  <!-- Ignore any system frameworks and get the system assemblies from Krafs.Rimworld.Ref -->
+  <Target Name="RemoveFramework" BeforeTargets="PrepareForBuild" DependsOnTargets="GetReferenceAssemblyPaths">
+    <PropertyGroup>
+      <TargetFrameworkDirectory></TargetFrameworkDirectory>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="CopyToRimworld" AfterTargets="Build">
+    <Copy SourceFiles="bin\Multiplayer.dll" DestinationFiles="..\..\AssembliesCustom\Multiplayer.dll" />
+    <Copy SourceFiles="bin\MultiplayerCommon.dll" DestinationFiles="..\..\AssembliesCustom\MultiplayerCommon.dll" />
+
+    <Copy SourceFiles="bin\0MultiplayerAPI.dll" DestinationFiles="..\..\Assemblies\0MultiplayerAPI.dll" />
+    <Copy SourceFiles="bin\0PrepatcherAPI.dll" DestinationFiles="..\..\Assemblies\0PrepatcherAPI.dll" />
+    <Copy SourceFiles="bin\LiteNetLib.dll" DestinationFiles="..\..\Assemblies\LiteNetLib.dll" />
+    <Copy SourceFiles="bin\MultiplayerLoader.dll" DestinationFiles="..\..\Assemblies\MultiplayerLoader.dll" />
+    <Copy SourceFiles="bin\RestSharp.dll" DestinationFiles="..\..\Assemblies\RestSharp.dll" />
+    <Copy SourceFiles="bin\System.IO.Compression.dll" DestinationFiles="..\..\Assemblies\System.IO.Compression.dll" />
+  </Target>
+
+</Project>

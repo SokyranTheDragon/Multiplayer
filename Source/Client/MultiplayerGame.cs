@@ -4,8 +4,11 @@ using RimWorld.BaseGen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using LudeonTK;
+using Multiplayer.API;
+using Multiplayer.Client.AsyncTime;
 using Multiplayer.Client.Comp;
-using Multiplayer.Client.Persistent;
+using Multiplayer.Client.Factions;
 using UnityEngine;
 using Verse;
 
@@ -15,6 +18,7 @@ namespace Multiplayer.Client
     {
         public SyncCoordinator sync = new();
 
+        public AsyncWorldTimeComp asyncWorldTimeComp;
         public MultiplayerWorldComp worldComp;
         public MultiplayerGameComp gameComp;
         public List<MultiplayerMapComp> mapComps = new();
@@ -25,6 +29,7 @@ namespace Multiplayer.Client
         public Faction myFactionLoading;
 
         public Dictionary<int, PlayerDebugState> playerDebugState = new();
+        public DebugActionNode rootDebugActionNode;
 
         public Faction RealPlayerFaction => myFaction ?? myFactionLoading;
 
@@ -51,6 +56,7 @@ namespace Multiplayer.Client
             District.nextDistrictID = 1;
             Region.nextId = 1;
             ListerHaulables.groupCycleIndex = 0;
+            ListerHaulables.cellCycleIndices.Clear();
 
             ZoneColorUtility.nextGrowingZoneColorIndex = 0;
             ZoneColorUtility.nextStorageZoneColorIndex = 0;
@@ -72,6 +78,8 @@ namespace Multiplayer.Client
             foreach (var initialOpinion in Multiplayer.session.initialOpinions)
                 sync.AddClientOpinionAndCheckDesync(initialOpinion);
             Multiplayer.session.initialOpinions.Clear();
+
+            FactionCreator.ClearData();
         }
 
         public static void ClearPortraits()
@@ -106,25 +114,9 @@ namespace Multiplayer.Client
             ThingContext.Clear();
         }
 
-        public IEnumerable<ISession> GetSessions(Map map)
+        public IEnumerable<Session> GetSessions(Map map)
         {
-            foreach (var s in worldComp.trading)
-                yield return s;
-
-            if (worldComp.splitSession != null)
-                yield return worldComp.splitSession;
-
-            if (map == null) yield break;
-            var mapComp = map.MpComp();
-
-            if (mapComp.caravanForming != null)
-                yield return mapComp.caravanForming;
-
-            if (mapComp.transporterLoading != null)
-                yield return mapComp.transporterLoading;
-
-            if (mapComp.ritualSession != null)
-                yield return mapComp.ritualSession;
+            return worldComp.sessionManager.AllSessions.ConcatIfNotNull(map?.MpComp().sessionManager.AllSessions);
         }
 
         public void ChangeRealPlayerFaction(int newFaction)
@@ -132,8 +124,10 @@ namespace Multiplayer.Client
             ChangeRealPlayerFaction(Find.FactionManager.GetById(newFaction));
         }
 
-        public void ChangeRealPlayerFaction(Faction newFaction)
+        public void ChangeRealPlayerFaction(Faction newFaction, bool regenMapDrawers = true)
         {
+            Log.Message($"Changing real player faction to {newFaction} from {myFaction}");
+
             myFaction = newFaction;
             FactionContext.Set(newFaction);
             worldComp.SetFaction(newFaction);
@@ -141,8 +135,17 @@ namespace Multiplayer.Client
             foreach (Map m in Find.Maps)
                 m.MpComp().SetFaction(newFaction);
 
-            Find.ColonistBar.MarkColonistsDirty();
-            Find.CurrentMap.mapDrawer.RegenerateEverythingNow();
+            foreach (Map m in Find.Maps)
+            {
+                if (regenMapDrawers)
+                    m.mapDrawer.RegenerateEverythingNow();
+
+                foreach (var t in m.listerThings.AllThings)
+                    if (t is ThingWithComps tc)
+                        tc.GetComp<CompForbiddable>()?.UpdateOverlayHandle();
+            }
+
+            Find.ColonistBar?.MarkColonistsDirty();
         }
     }
 }

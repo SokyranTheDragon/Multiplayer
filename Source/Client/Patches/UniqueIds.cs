@@ -1,5 +1,4 @@
 using HarmonyLib;
-using Multiplayer.Common;
 using RimWorld;
 using System.Collections.Generic;
 using System.Reflection;
@@ -11,59 +10,23 @@ namespace Multiplayer.Client.Patches
     [HarmonyPatch(nameof(UniqueIDsManager.GetNextID))]
     public static class UniqueIdsPatch
     {
-        private static IdBlock currentBlock;
-
-        public static IdBlock CurrentBlock
-        {
-            get => currentBlock;
-
-            set
-            {
-                if (value != null && currentBlock != null && currentBlock != value)
-                    Log.Warning("Reassigning the current id block!");
-                currentBlock = value;
-            }
-        }
-
         // Start at -2 because -1 is sometimes used as the uninitialized marker
         private static int localIds = -2;
 
+        public static bool useLocalIdsOverride;
+
+        private static bool UseLocalIds =>
+            Multiplayer.Client != null && (useLocalIdsOverride || Multiplayer.InInterface || Current.ProgramState == ProgramState.Entry);
+
         static bool Prefix()
         {
-            return Multiplayer.Client == null || !Multiplayer.InInterface;
+            return !UseLocalIds;
         }
 
         static void Postfix(ref int __result)
         {
-            if (Multiplayer.Client == null) return;
-
-            /*IdBlock currentBlock = CurrentBlock;
-            if (currentBlock == null)
-            {
+            if (UseLocalIds)
                 __result = localIds--;
-                if (!Multiplayer.ShouldSync)
-                    Log.Warning("Tried to get a unique id without an id block set!");
-                return;
-            }
-
-            __result = currentBlock.NextId();*/
-
-            if (Multiplayer.InInterface)
-            {
-                __result = localIds--;
-            }
-            else
-            {
-                __result = Multiplayer.GlobalIdBlock.NextId();
-            }
-
-            //MpLog.Log("got new id " + __result);
-
-            /*if (currentBlock.current > currentBlock.blockSize * 0.95f && !currentBlock.overflowHandled)
-            {
-                Multiplayer.Client.Send(Packets.Client_IdBlockRequest, CurrentBlock.mapId);
-                currentBlock.overflowHandled = true;
-            }*/
         }
     }
 
@@ -83,10 +46,10 @@ namespace Multiplayer.Client.Patches
     [HarmonyPatch(typeof(OutfitDatabase), nameof(OutfitDatabase.MakeNewOutfit))]
     static class OutfitUniqueIdPatch
     {
-        static void Postfix(Outfit __result)
+        static void Postfix(ApparelPolicy __result)
         {
             if (Multiplayer.Ticking || Multiplayer.ExecutingCmds)
-                __result.uniqueId = Multiplayer.GlobalIdBlock.NextId();
+                __result.id = Find.UniqueIDsManager.GetNextThingID();
         }
     }
 
@@ -96,17 +59,17 @@ namespace Multiplayer.Client.Patches
         static void Postfix(DrugPolicy __result)
         {
             if (Multiplayer.Ticking || Multiplayer.ExecutingCmds)
-                __result.uniqueId = Multiplayer.GlobalIdBlock.NextId();
+                __result.id = Find.UniqueIDsManager.GetNextThingID();
         }
     }
 
     [HarmonyPatch(typeof(FoodRestrictionDatabase), nameof(FoodRestrictionDatabase.MakeNewFoodRestriction))]
     static class FoodRestrictionUniqueIdPatch
     {
-        static void Postfix(FoodRestriction __result)
+        static void Postfix(FoodPolicy __result)
         {
             if (Multiplayer.Ticking || Multiplayer.ExecutingCmds)
-                __result.id = Multiplayer.GlobalIdBlock.NextId();
+                __result.id = Find.UniqueIDsManager.GetNextThingID();
         }
     }
 
@@ -154,6 +117,45 @@ namespace Multiplayer.Client.Patches
                 return false;
 
             return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(CrossRefHandler), nameof(CrossRefHandler.Clear))]
+    static class CrossRefHandler_Clear_Patch
+    {
+        static void Prefix(CrossRefHandler __instance, bool errorIfNotEmpty)
+        {
+            // If called from CrossRefHandler.ResolveAllCrossReferences and exposing during playtime, fix object ids
+            if (errorIfNotEmpty && ScribeUtil.loading)
+            {
+                foreach (var key in ScribeUtil.sharedCrossRefs.tempKeys)
+                {
+                    var obj = ScribeUtil.sharedCrossRefs.allObjectsByLoadID[key];
+                    if (obj is Thing { thingIDNumber: < 0 } t)
+                        t.thingIDNumber = Find.UniqueIDsManager.GetNextThingID();
+                    else if (obj is Gene { loadID: < 0 } g)
+                        g.loadID = Find.UniqueIDsManager.GetNextGeneID();
+                    else if (obj is Hediff { loadID: < 0 } h)
+                        h.loadID = Find.UniqueIDsManager.GetNextHediffID();
+                }
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(Thing), nameof(Thing.IDNumberFromThingID))]
+    static class HandleNegativeThingIdWhenLoading
+    {
+        static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
+        {
+            foreach (var inst in insts)
+            {
+                // Handle negative thing ids when loading
+                // These come from getting a unique id in the interface and are fixed (replaced) later when necessary
+                if (inst.operand is "\\d+$")
+                    inst.operand = "-?\\d+$";
+
+                yield return inst;
+            }
         }
     }
 

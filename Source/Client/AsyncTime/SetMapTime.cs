@@ -27,14 +27,14 @@ namespace Multiplayer.Client
         }
 
         [HarmonyPriority(MpPriority.MpFirst)]
-        static void Prefix(ref TimeSnapshot? __state)
+        internal static void Prefix(ref TimeSnapshot? __state)
         {
             if (Multiplayer.Client == null || WorldRendererUtility.WorldRenderedNow || Find.CurrentMap == null) return;
             __state = TimeSnapshot.GetAndSetFromMap(Find.CurrentMap);
         }
 
         [HarmonyPriority(MpPriority.MpLast)]
-        static void Postfix(TimeSnapshot? __state) => __state?.Set();
+        internal static void Finalizer(TimeSnapshot? __state) => __state?.Set();
     }
 
     [HarmonyPatch]
@@ -192,12 +192,12 @@ namespace Multiplayer.Client
 
             TimeSnapshot prev = Current();
 
-            var man = Find.TickManager;
-            var comp = map.AsyncTime();
+            var tickManager = Find.TickManager;
+            var mapComp = map.AsyncTime();
 
-            man.ticksGameInt = comp.mapTicks;
-            man.slower = comp.slower;
-            man.CurTimeSpeed = comp.TimeSpeed;
+            tickManager.ticksGameInt = mapComp.mapTicks;
+            tickManager.slower = mapComp.slower;
+            tickManager.CurTimeSpeed = mapComp.DesiredTimeSpeed;
 
             return prev;
         }

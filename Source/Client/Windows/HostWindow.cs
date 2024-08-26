@@ -13,7 +13,6 @@ using Multiplayer.Common.Util;
 
 namespace Multiplayer.Client
 {
-
     [StaticConstructorOnStartup]
     public class HostWindow : Window
     {
@@ -22,34 +21,37 @@ namespace Multiplayer.Client
             Connecting, Gameplay
         }
 
-        public override Vector2 InitialSize => new(550f, 430f);
+        public override Vector2 InitialSize => new(550f, 460f);
 
         private SaveFile file;
         public bool returnToServerBrowser;
-        private bool withSimulation;
-        private bool asyncTime;
-        private bool asyncTimeLocked;
         private Tab tab;
+
+        private bool asyncTimeLocked;
+        private bool multifactionLocked;
 
         private float height;
 
         private ServerSettings serverSettings;
 
-        public HostWindow(SaveFile file = null, bool withSimulation = false)
+        public HostWindow(SaveFile file = null)
         {
             closeOnAccept = false;
             doCloseX = true;
 
-            serverSettings = Multiplayer.settings.serverSettings;
+            serverSettings = Multiplayer.settings.PreferredLocalServerSettings;
 
-            this.withSimulation = withSimulation;
             this.file = file;
             serverSettings.gameName = file?.gameName ?? Multiplayer.session?.gameName ?? $"{Multiplayer.username}'s game";
 
-            asyncTime = file?.asyncTime ?? Multiplayer.game?.gameComp.asyncTime ?? false;
+            serverSettings.asyncTime = file?.asyncTime ?? Multiplayer.game?.gameComp.asyncTime ?? false;
+            serverSettings.multifaction = file?.multifaction ?? Multiplayer.game?.gameComp.multifaction ?? false;
 
-            if (asyncTime)
+            if (serverSettings.asyncTime)
                 asyncTimeLocked = true; // Once enabled in a save, cannot be disabled
+
+            if (serverSettings.multifaction)
+                multifactionLocked = true;
 
             var localAddr = MpUtil.GetLocalIpAddress() ?? "127.0.0.1";
             serverSettings.lanAddress = localAddr;
@@ -218,9 +220,13 @@ namespace Multiplayer.Client
 
             entry = entry.Down(30);
 
+            // Multifaction
+            MpUI.CheckboxLabeled(entry.Width(CheckboxWidth), $"Multifaction:  ", ref serverSettings.multifaction, order: ElementOrder.Right, disabled: multifactionLocked);
+            entry = entry.Down(30);
+
             // Async time
             TooltipHandler.TipRegion(entry.Width(CheckboxWidth), $"{"MpAsyncTimeDesc".Translate()}\n\n{"MpExperimentalFeature".Translate()}");
-            MpUI.CheckboxLabeled(entry.Width(CheckboxWidth), $"{"MpAsyncTime".Translate()}:  ", ref asyncTime, order: ElementOrder.Right, disabled: asyncTimeLocked);
+            MpUI.CheckboxLabeled(entry.Width(CheckboxWidth), $"{"MpAsyncTime".Translate()}:  ", ref serverSettings.asyncTime, order: ElementOrder.Right, disabled: asyncTimeLocked);
             entry = entry.Down(30);
 
             // Time control
@@ -416,11 +422,11 @@ namespace Multiplayer.Client
                 return;
 
             if (file?.replay ?? Multiplayer.IsReplay)
-                HostFromMultiplayerSave(settings);
+                HostFromReplay(settings);
             else if (file == null)
-                HostUtil.HostServer(settings, false, false, asyncTime);
+                HostFromSpIngame(settings);
             else
-                HostFromSingleplayer(settings);
+                HostFromSpSaveFile(settings);
 
             Close();
         }
@@ -459,7 +465,7 @@ namespace Multiplayer.Client
                 failed = true;
             }
 
-            if (settings.lan && !localServer.liteNet.lanManager.IsRunning)
+            if (settings.lan && !localServer.liteNet.lanManager!.IsRunning)
             {
                 Messages.Message("Failed to bind LAN on " + settings.lanAddress, MessageTypeDefOf.RejectInput, false);
                 failed = true;
@@ -475,13 +481,13 @@ namespace Multiplayer.Client
 
         public override void PostClose()
         {
-            Multiplayer.WriteSettingsToDisk();
+            Multiplayer.settings.Write();
 
             if (returnToServerBrowser)
                 Find.WindowStack.Add(new ServerBrowser());
         }
 
-        private void HostFromSingleplayer(ServerSettings settings)
+        private void HostFromSpSaveFile(ServerSettings settings)
         {
             LongEventHandler.QueueLongEvent(() =>
             {
@@ -496,14 +502,19 @@ namespace Multiplayer.Client
 
                 LongEventHandler.ExecuteWhenFinished(() =>
                 {
-                    LongEventHandler.QueueLongEvent(() => HostUtil.HostServer(settings, false, false, asyncTime), "MpLoading", false, null);
+                    LongEventHandler.QueueLongEvent(() => HostUtil.HostServer(settings, false), "MpLoading", false, null);
                 });
             }, "Play", "LoadingLongEvent", true, null);
         }
 
-        private void HostFromMultiplayerSave(ServerSettings settings)
+        private void HostFromSpIngame(ServerSettings settings)
         {
-            void ReplayLoaded() => HostUtil.HostServer(settings, true, withSimulation, asyncTime);
+            HostUtil.HostServer(settings, false);
+        }
+
+        private void HostFromReplay(ServerSettings settings)
+        {
+            void ReplayLoaded() => HostUtil.HostServer(settings, true);
 
             if (file != null)
             {

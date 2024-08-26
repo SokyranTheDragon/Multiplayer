@@ -7,20 +7,19 @@ using System.Linq;
 using System.Threading;
 using System.Xml;
 using Multiplayer.Client.Saving;
+using Multiplayer.Client.Util;
 using UnityEngine;
 using Verse;
 using Verse.Profile;
 
 namespace Multiplayer.Client
 {
-    public record TempGameData(XmlDocument SaveData, byte[] SemiPersistent);
-
+    public record TempGameData(XmlDocument SaveData, byte[] SessionData);
 
     public static class SaveLoad
     {
         public static TempGameData SaveAndReload()
         {
-            //SimpleProfiler.Start();
             Multiplayer.reloading = true;
 
             var worldGridSaved = Find.WorldGrid;
@@ -35,12 +34,9 @@ namespace Multiplayer.Client
             var selectedData = new ByteWriter();
             SyncSerialization.WriteSync(selectedData, Find.Selector.selected.OfType<ISelectable>().ToList());
 
-            //Multiplayer.RealPlayerFaction = Multiplayer.DummyFaction;
-
             foreach (Map map in Find.Maps)
             {
                 drawers[map.uniqueID] = map.mapDrawer;
-                //RebuildRegionsAndRoomsPatch.copyFrom[map.uniqueID] = map.regionGrid;
 
                 foreach (Pawn p in map.mapPawns.AllPawnsSpawned)
                     tweenedPos[p.thingIDNumber] = p.drawer.tweener.tweenedPos;
@@ -48,14 +44,18 @@ namespace Multiplayer.Client
                 mapCmds[map.uniqueID] = map.AsyncTime().cmds;
             }
 
-            mapCmds[ScheduledCommand.Global] = Multiplayer.WorldComp.cmds;
+            mapCmds[ScheduledCommand.Global] = Multiplayer.AsyncWorldTime.cmds;
 
-            DeepProfiler.Start("Multiplayer SaveAndReload: Save");
-            //WriteElementPatch.cachedVals = new Dictionary<string, object>();
-            //WriteElementPatch.id = 0;
-            var gameData = SaveGameData();
-            DeepProfiler.End();
-            //Log.Message($"Saving took {WriteElementPatch.cachedVals.Count} {WriteElementPatch.cachedVals.FirstOrDefault()}");
+            TempGameData gameData;
+            using (DeepProfilerWrapper.Section("Multiplayer SaveAndReload: Save"))
+            {
+                // When reloading in multifaction always save as a fixed faction to ensure determinism
+                // The faction is chosen to be the first player faction in the FactionManager as this is what
+                // Faction.OfPlayer gets set to initially during loading (in FactionManager.ExposeData -> RecacheFactions)
+                if (Multiplayer.GameComp.multifaction)
+                    Multiplayer.game.ChangeRealPlayerFaction(Find.FactionManager.AllFactions.First(f => f.IsPlayer), false);
+                gameData = SaveGameData();
+            }
 
             MapDrawerRegenPatch.copyFrom = drawers;
             WorldGridCachePatch.copyFrom = worldGridSaved;
@@ -71,9 +71,6 @@ namespace Multiplayer.Client
 
                 musicManager = Find.MusicManagerPlay;
             }
-
-            //SpawnSetupPatch.total = 0;
-            //SpawnSetupPatch.total2 = new long[SpawnSetupPatch.total2.Length];
 
             LoadInMainThread(gameData);
 
@@ -103,12 +100,9 @@ namespace Multiplayer.Client
             Find.Selector.selected = SyncSerialization.ReadSync<List<ISelectable>>(selectedReader).AllNotNull().Cast<object>().ToList();
 
             Find.World.renderer.wantedMode = planetRenderMode;
-            Multiplayer.WorldComp.cmds = mapCmds[ScheduledCommand.Global];
+            Multiplayer.AsyncWorldTime.cmds = mapCmds[ScheduledCommand.Global];
 
             Multiplayer.reloading = false;
-            //SimpleProfiler.Pause();
-
-            //Log.Message($"allocs {(double)SpawnSetupPatch.total2.Sum() / Stopwatch.Frequency * 1000} ({SpawnSetupPatch.total2.Select((l,i) => $"{SpawnSetupPatch.methods[i]}: {(double)l / Stopwatch.Frequency * 1000}").Join(delimiter: "\n")}) {SpawnSetupPatch.total} {AllocsPrefixClass.allocs} {CustomXmlElement.n} {CustomXmlElement.m} {CustomXmlElement.n - CustomXmlElement.m} {(double)CustomXmlElement.n/CustomXmlElement.m}");
 
             return gameData;
         }
@@ -129,8 +123,6 @@ namespace Multiplayer.Client
             // SaveCompression enabled in the patch
             SavedGameLoaderNow.LoadGameFromSaveFileNow(null);
 
-            Log.Message($"loading stack {FactionContext.stack.Count}");
-
             DeepProfiler.End();
         }
 
@@ -144,16 +136,16 @@ namespace Multiplayer.Client
                     sustainer.Cleanup();
 
                 // todo destroy other game objects?
-                UnityEngine.Object.Destroy(pool.sourcePoolCamera.cameraSourcesContainer);
-                UnityEngine.Object.Destroy(pool.sourcePoolWorld.sourcesWorld[0].gameObject);
+                Object.Destroy(pool.sourcePoolCamera.cameraSourcesContainer);
+                Object.Destroy(pool.sourcePoolWorld.sourcesWorld[0].gameObject);
             }
         }
 
         public static TempGameData SaveGameData()
         {
             var gameDoc = SaveGameToDoc();
-            var semiPersistent = SemiPersistent.WriteSemiPersistent();
-            return new TempGameData(gameDoc, semiPersistent);
+            var sessionData = SessionData.WriteSessionData();
+            return new TempGameData(gameDoc, sessionData);
         }
 
         public static XmlDocument SaveGameToDoc()
@@ -185,39 +177,44 @@ namespace Multiplayer.Client
             return ScribeUtil.FinishWritingToDoc();
         }
 
-        public static GameDataSnapshot CreateGameDataSnapshot(TempGameData data)
+        public static GameDataSnapshot CreateGameDataSnapshot(TempGameData data, bool removeCurrentMapId)
         {
             XmlNode gameNode = data.SaveData.DocumentElement["game"];
             XmlNode mapsNode = gameNode["maps"];
 
-            var dataSnapshot = new GameDataSnapshot();
+            var mapCmdsDict = new Dictionary<int, List<ScheduledCommand>>();
+            var mapDataDict = new Dictionary<int, byte[]>();
 
             foreach (XmlNode mapNode in mapsNode)
             {
                 int id = int.Parse(mapNode["uniqueID"].InnerText);
                 byte[] mapData = ScribeUtil.XmlToByteArray(mapNode);
-                dataSnapshot.mapData[id] = mapData;
-                dataSnapshot.mapCmds[id] = new List<ScheduledCommand>(Find.Maps.First(m => m.uniqueID == id).AsyncTime().cmds);
+                mapDataDict[id] = mapData;
+                mapCmdsDict[id] = new List<ScheduledCommand>(Find.Maps.First(m => m.uniqueID == id).AsyncTime().cmds);
             }
 
-            gameNode["currentMapIndex"].RemoveFromParent();
+            if (removeCurrentMapId)
+                gameNode["currentMapIndex"].RemoveFromParent();
+
             mapsNode.RemoveAll();
 
             byte[] gameData = ScribeUtil.XmlToByteArray(data.SaveData);
-            dataSnapshot.cachedAtTime = TickPatch.Timer;
-            dataSnapshot.gameData = gameData;
-            dataSnapshot.semiPersistentData = data.SemiPersistent;
-            dataSnapshot.mapCmds[ScheduledCommand.Global] = new List<ScheduledCommand>(Multiplayer.WorldComp.cmds);
+            mapCmdsDict[ScheduledCommand.Global] = new List<ScheduledCommand>(Multiplayer.AsyncWorldTime.cmds);
 
-            return dataSnapshot;
+            return new GameDataSnapshot(
+                TickPatch.Timer,
+                gameData,
+                data.SessionData,
+                mapDataDict,
+                mapCmdsDict
+            );
         }
 
-        public static void SendGameData(GameDataSnapshot data, bool async)
+        public static void SendGameData(GameDataSnapshot snapshot, bool async)
         {
-            var cache = Multiplayer.session.dataSnapshot;
-            var mapsData = new Dictionary<int, byte[]>(cache.mapData);
-            var gameData = cache.gameData;
-            var semiPersistent = cache.semiPersistentData;
+            var mapsData = new Dictionary<int, byte[]>(snapshot.MapData);
+            var gameData = snapshot.GameData;
+            var sessionData = snapshot.SessionData;
 
             void Send()
             {
@@ -231,7 +228,7 @@ namespace Multiplayer.Client
                 }
 
                 writer.WritePrefixedBytes(GZipStream.CompressBuffer(gameData));
-                writer.WritePrefixedBytes(GZipStream.CompressBuffer(semiPersistent));
+                writer.WritePrefixedBytes(GZipStream.CompressBuffer(sessionData));
 
                 byte[] data = writer.ToArray();
 

@@ -19,10 +19,11 @@ namespace Multiplayer.Client
         {
             int tickUntil = data.ReadInt32();
             int sentCmds = data.ReadInt32();
-            TickPatch.serverTimePerTick = data.ReadFloat();
+            float stpt = data.ReadFloat();
 
             if (Multiplayer.session.remoteTickUntil >= tickUntil) return;
 
+            TickPatch.serverTimePerTick = stpt;
             Multiplayer.session.remoteTickUntil = tickUntil;
             Multiplayer.session.remoteSentCmds = sentCmds;
             Multiplayer.session.ProcessTimeControl();
@@ -50,12 +51,6 @@ namespace Multiplayer.Client
 
             Multiplayer.session.receivedCmds++;
             Multiplayer.session.ProcessTimeControl();
-        }
-
-        [PacketHandler(Packets.Server_CanRejoin)]
-        public void HandleCanRejoin(ByteReader data)
-        {
-            MultiplayerSession.DoRejoin();
         }
 
         [PacketHandler(Packets.Server_PlayerList)]
@@ -92,6 +87,7 @@ namespace Multiplayer.Client
                     player.latency = data.ReadInt32();
                     player.ticksBehind = data.ReadInt32();
                     player.simulating = data.ReadBool();
+                    player.frameTime = data.ReadFloat();
                 }
             }
             else if (action == PlayerListAction.Status)
@@ -181,7 +177,7 @@ namespace Multiplayer.Client
             int planetTile = data.ReadInt32();
             var loc = new Vector3(data.ReadFloat(), data.ReadFloat(), data.ReadFloat());
 
-            Session.cursorAndPing.ReceivePing(player, map, planetTile, loc);
+            Session.locationPings.ReceivePing(player, map, planetTile, loc);
         }
 
         [PacketHandler(Packets.Server_MapResponse)]
@@ -194,10 +190,10 @@ namespace Multiplayer.Client
             for (int j = 0; j < mapCmdsLen; j++)
                 mapCmds.Add(ScheduledCommand.Deserialize(new ByteReader(data.ReadPrefixedBytes())));
 
-            Session.dataSnapshot.mapCmds[mapId] = mapCmds;
+            Session.dataSnapshot.MapCmds[mapId] = mapCmds;
 
             byte[] mapData = GZipStream.UncompressBuffer(data.ReadPrefixedBytes());
-            Session.dataSnapshot.mapData[mapId] = mapData;
+            Session.dataSnapshot.MapData[mapId] = mapData;
 
             //ClientJoiningState.ReloadGame(TickPatch.tickUntil, Find.Maps.Select(m => m.uniqueID).Concat(mapId).ToList());
             // todo Multiplayer.client.Send(Packets.CLIENT_MAP_LOADED);
@@ -225,7 +221,7 @@ namespace Multiplayer.Client
             bool frozen = data.ReadBool();
             int frozenAt = data.ReadInt32();
 
-            TickPatch.shouldFreeze = frozen;
+            TickPatch.serverFrozen = frozen;
             TickPatch.frozenAt = frozenAt;
         }
 
@@ -256,6 +252,7 @@ namespace Multiplayer.Client
         [PacketHandler(Packets.Server_Debug)]
         public void HandleDebug(ByteReader data)
         {
+            Rejoiner.DoRejoin();
         }
 
         [PacketHandler(Packets.Server_SetFaction)]
@@ -267,7 +264,10 @@ namespace Multiplayer.Client
             Session.GetPlayerInfo(player).factionId = factionId;
 
             if (Session.playerId == player)
+            {
                 Multiplayer.game.ChangeRealPlayerFaction(factionId);
+                Session.myFactionId = factionId;
+            }
         }
     }
 

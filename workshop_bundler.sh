@@ -1,63 +1,51 @@
 #!/bin/bash
 
+
+
 VERSION=$(grep -Po '(?<=Version = ")[0-9\.]+' Source/Common/Version.cs)
 
-git submodule update --init --recursive
+git submodule update --init --recursive || { echo 'git submodule update FAILED' ; exit 1; }
 
-cd Source
-dotnet build --configuration Release
+cd Source || exit
+dotnet build --configuration Release || { echo 'dotnet build FAILED' ; exit 1; }
 cd ..
 
 rm -rf Multiplayer/
 mkdir -p Multiplayer
-cd Multiplayer
+cd Multiplayer || exit
 
 # About/ and Textures/ are shared between all versions
 cp -r ../About ../Textures .
 
 cat <<EOF > LoadFolders.xml
 <loadFolders>
+  <v1.5>
+    <li>/</li>
+    <li>1.5</li>
+  </v1.5>
   <v1.4>
     <li>/</li>
     <li>1.4</li>
   </v1.4>
-  <v1.3.3311>
-    <li>/</li>
-    <li>1.3.3311</li>
-  </v1.3.3311>
-  <v1.3>
-    <li>/</li>
-    <li>1.3</li>
-  </v1.3>
-  <v1.2>
-    <li>/</li>
-    <li>1.2</li>
-  </v1.2>
 </loadFolders>
 EOF
 
 
-sed -i "/<supportedVersions>/ a \ \ \ \ <li>1.3</li>" About/About.xml
-sed -i "/<supportedVersions>/ a \ \ \ \ <li>1.2</li>" About/About.xml
+sed -i "/<supportedVersions>/ a \ \ \ \ <li>1.4</li>" About/About.xml
 sed -i "/Multiplayer mod for RimWorld./aThis is version ${VERSION}." About/About.xml
 sed -i "s/<version>.*<\/version>\$/<version>${VERSION}<\/version>/" About/Manifest.xml
 
 # The current version
-mkdir -p 1.4
-cp -r ../Assemblies ../Defs ../Languages 1.4/
-rm -f 1.4/Languages/.git 1.4/Languages/LICENSE 1.4/Languages/README.md
+mkdir -p 1.5
+cp -r ../Assemblies ../AssembliesCustom ../Defs ../Languages 1.5/
+rm -f 1.5/Languages/.git 1.5/Languages/LICENSE 1.5/Languages/README.md
 
 # Past versions
-mkdir -p 1.3.3311
-git --work-tree=1.3.3311 restore --recurse-submodules --source=origin/rw-1.3.3311 -- Assemblies Defs Languages
-rm -f 1.3.3311/Languages/.git 1.3.3311/Languages/LICENSE 1.3.3311/Languages/README.md
-
-mkdir -p 1.3
-git --work-tree=1.3 restore --recurse-submodules --source=origin/rw-1.3 -- Assemblies Defs Languages
-rm -f 1.3/Languages/.git 1.3/Languages/LICENSE 1.3/Languages/README.md
-
-mkdir -p 1.2
-git --work-tree=1.2 restore --source=origin/rw-1.2 -- Assemblies Defs Languages
+git clone -b rw-1.4 --depth=1 --single-branch --recurse-submodules https://github.com/rwmt/Multiplayer.git 1.4 || { echo 'Git cloning 1.4 FAILED' ; exit 1; }
+shopt -s extglob
+shopt -s dotglob
+rm -rf -- 1.4/!(Languages|Assemblies|AssembliesCustom|Defs)
+rm -f 1.4/Languages/.git 1.4/Languages/LICENSE 1.4/Languages/README.md
 
 cd ..
 

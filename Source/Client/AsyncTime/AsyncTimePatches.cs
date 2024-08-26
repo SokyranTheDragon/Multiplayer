@@ -21,7 +21,6 @@ namespace Multiplayer.Client.AsyncTime
     }
 
     [HarmonyPatch(typeof(Autosaver), nameof(Autosaver.AutosaverTick))]
-
     static class DisableAutosaver
     {
         static bool Prefix() => Multiplayer.Client == null;
@@ -33,7 +32,7 @@ namespace Multiplayer.Client.AsyncTime
         public static bool updating;
 
         static void Prefix() => updating = true;
-        static void Postfix() => updating = false;
+        static void Finalizer() => updating = false;
     }
 
     [HarmonyPatch]
@@ -65,7 +64,7 @@ namespace Multiplayer.Client.AsyncTime
             Find.TickManager.DebugSetTicksGame(map.AsyncTime().mapTicks);
         }
 
-        static void Postfix(int? __state)
+        static void Finalizer(int? __state)
         {
             if (!__state.HasValue) return;
             Find.TickManager.DebugSetTicksGame(__state.Value);
@@ -121,7 +120,7 @@ namespace Multiplayer.Client.AsyncTime
         public static Pawn calculating;
 
         static void Prefix(PawnTweener __instance) => calculating = __instance.pawn;
-        static void Postfix() => calculating = null;
+        static void Finalizer() => calculating = null;
     }
 
     [HarmonyPatch(typeof(TickManager), nameof(TickManager.TickRateMultiplier), MethodType.Getter)]
@@ -135,7 +134,7 @@ namespace Multiplayer.Client.AsyncTime
 
             var map = PreDrawCalcMarker.calculating.Map ?? Find.CurrentMap;
             var asyncTime = map.AsyncTime();
-            var timeSpeed = Multiplayer.IsReplay ? TickPatch.replayTimeSpeed : asyncTime.TimeSpeed;
+            var timeSpeed = Multiplayer.IsReplay ? TickPatch.replayTimeSpeed : asyncTime.DesiredTimeSpeed;
 
             __result = TickPatch.Simulating ? 6 : asyncTime.ActualRateMultiplier(timeSpeed);
         }
@@ -150,75 +149,9 @@ namespace Multiplayer.Client.AsyncTime
             if (WorldRendererUtility.WorldRenderedNow) return;
 
             var asyncTime = Find.CurrentMap.AsyncTime();
-            var timeSpeed = Multiplayer.IsReplay ? TickPatch.replayTimeSpeed : asyncTime.TimeSpeed;
+            var timeSpeed = Multiplayer.IsReplay ? TickPatch.replayTimeSpeed : asyncTime.DesiredTimeSpeed;
 
             __result = asyncTime.ActualRateMultiplier(timeSpeed) == 0;
-        }
-    }
-
-    [HarmonyPatch]
-    public class StorytellerTickPatch
-    {
-        public static bool updating;
-
-        static IEnumerable<MethodBase> TargetMethods()
-        {
-            yield return AccessTools.Method(typeof(Storyteller), nameof(Storyteller.StorytellerTick));
-            yield return AccessTools.Method(typeof(StoryWatcher), nameof(StoryWatcher.StoryWatcherTick));
-        }
-
-        static bool Prefix()
-        {
-            updating = true;
-            return Multiplayer.Client == null || Multiplayer.Ticking;
-        }
-
-        static void Postfix() => updating = false;
-    }
-
-    [HarmonyPatch(typeof(Storyteller))]
-    [HarmonyPatch(nameof(Storyteller.AllIncidentTargets), MethodType.Getter)]
-    public class StorytellerTargetsPatch
-    {
-        static void Postfix(List<IIncidentTarget> __result)
-        {
-            if (Multiplayer.Client == null) return;
-
-            if (Multiplayer.MapContext != null)
-            {
-                __result.Clear();
-                __result.Add(Multiplayer.MapContext);
-            }
-            else if (MultiplayerWorldComp.tickingWorld)
-            {
-                __result.Clear();
-
-                foreach (var caravan in Find.WorldObjects.Caravans)
-                    if (caravan.IsPlayerControlled)
-                        __result.Add(caravan);
-
-                __result.Add(Find.World);
-            }
-        }
-    }
-
-    // The MP Mod's ticker calls Storyteller.StorytellerTick() on both the World and each Map, each tick
-    // This patch aims to ensure each "spawn raid" Quest is only triggered once, to prevent 2x or 3x sized raids
-    [HarmonyPatch(typeof(Quest), nameof(Quest.PartsListForReading), MethodType.Getter)]
-    public class QuestPartsListForReadingPatch
-    {
-        static void Postfix(ref List<QuestPart> __result)
-        {
-            if (StorytellerTickPatch.updating)
-            {
-                __result = __result.Where(questPart => {
-                    if (questPart is QuestPart_ThreatsGenerator questPartThreatsGenerator)
-                    {
-                        return questPartThreatsGenerator.mapParent?.Map == Multiplayer.MapContext;
-                    }
-                    return true;
-                }).ToList();
-            }
         }
     }
 
@@ -236,57 +169,7 @@ namespace Multiplayer.Client.AsyncTime
         }
     }
 
-    [HarmonyPatch(typeof(StorytellerUtility), nameof(StorytellerUtility.DefaultParmsNow))]
-    static class MapContextIncidentParms
-    {
-        static void Prefix(IIncidentTarget target, ref Map __state)
-        {
-            // This may be running inside a context already
-            if (AsyncTimeComp.tickingMap != null)
-                return;
-
-            if (MultiplayerWorldComp.tickingWorld && target is Map map)
-            {
-                AsyncTimeComp.tickingMap = map;
-                map.AsyncTime().PreContext();
-                __state = map;
-            }
-        }
-
-        static void Postfix(Map __state)
-        {
-            if (__state != null)
-            {
-                __state.AsyncTime().PostContext();
-                AsyncTimeComp.tickingMap = null;
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(IncidentWorker), nameof(IncidentWorker.TryExecute))]
-    static class MapContextIncidentExecute
-    {
-        static void Prefix(IncidentParms parms, ref Map __state)
-        {
-            if (MultiplayerWorldComp.tickingWorld && parms.target is Map map)
-            {
-                AsyncTimeComp.tickingMap = map;
-                map.AsyncTime().PreContext();
-                __state = map;
-            }
-        }
-
-        static void Postfix(Map __state)
-        {
-            if (__state != null)
-            {
-                __state.AsyncTime().PostContext();
-                AsyncTimeComp.tickingMap = null;
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(LetterStack), nameof(LetterStack.ReceiveLetter), typeof(Letter), typeof(string))]
+    [HarmonyPatch(typeof(LetterStack), nameof(LetterStack.ReceiveLetter), typeof(Letter), typeof(string), typeof(int), typeof(bool))]
     static class ReceiveLetterPause
     {
         static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> insts)
@@ -302,14 +185,14 @@ namespace Multiplayer.Client.AsyncTime
             }
         }
 
-        static AutomaticPauseMode AutomaticPauseMode()
+        private static AutomaticPauseMode AutomaticPauseMode()
         {
             return Multiplayer.Client != null
                 ? (AutomaticPauseMode) Multiplayer.GameComp.pauseOnLetter
                 : Prefs.AutomaticPauseMode;
         }
 
-        static void PauseOnLetter(TickManager manager)
+        private static void PauseOnLetter(TickManager manager)
         {
             if (Multiplayer.Client == null)
             {
@@ -319,21 +202,15 @@ namespace Multiplayer.Client.AsyncTime
 
             if (Multiplayer.GameComp.asyncTime)
             {
-                var tickable = (ITickable)Multiplayer.MapContext.AsyncTime() ?? Multiplayer.WorldComp;
-                tickable.TimeSpeed = TimeSpeed.Paused;
+                var tickable = (ITickable)Multiplayer.MapContext.AsyncTime() ?? Multiplayer.AsyncWorldTime;
+                tickable.SetDesiredTimeSpeed(TimeSpeed.Paused);
                 Multiplayer.GameComp.ResetAllTimeVotes(tickable.TickableId);
-                if (tickable is AsyncTimeComp comp)
-                    comp.TrySetPrevTimeSpeed(TimeSpeed.Paused);
             }
             else
             {
-                Multiplayer.WorldComp.SetTimeEverywhere(TimeSpeed.Paused);
+                Multiplayer.AsyncWorldTime.SetTimeEverywhere(TimeSpeed.Paused);
                 foreach (var tickable in TickPatch.AllTickables)
-                {
                     Multiplayer.GameComp.ResetAllTimeVotes(tickable.TickableId);
-                    if (tickable is AsyncTimeComp comp)
-                        comp.TrySetPrevTimeSpeed(TimeSpeed.Paused);
-                }
             }
         }
     }

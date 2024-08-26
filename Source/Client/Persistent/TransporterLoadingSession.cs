@@ -3,16 +3,13 @@ using System.Linq;
 using Multiplayer.API;
 using RimWorld;
 using Verse;
-using Multiplayer.Client.Persistent;
 
 namespace Multiplayer.Client
 {
-    public class TransporterLoading : IExposable, ISessionWithTransferables, IPausingWithDialog
+    public class TransporterLoading : ExposableSession, ISessionWithTransferables
     {
-        public int SessionId => sessionId;
-        public Map Map => map;
+        public override Map Map => map;
 
-        public int sessionId;
         public Map map;
 
         public List<CompTransporter> transporters;
@@ -21,14 +18,13 @@ namespace Multiplayer.Client
 
         public bool uiDirty;
 
-        public TransporterLoading(Map map)
+        public TransporterLoading(Map map) : base(map)
         {
             this.map = map;
         }
 
         public TransporterLoading(Map map, List<CompTransporter> transporters) : this(map)
         {
-            sessionId = Multiplayer.GlobalIdBlock.NextId();
             this.transporters = transporters;
             pods = transporters.Select(t => t.parent).ToList();
 
@@ -71,7 +67,7 @@ namespace Multiplayer.Client
         [SyncMethod]
         public void Remove()
         {
-            map.MpComp().transporterLoading = null;
+            map.MpComp().sessionManager.RemoveSession(this);
         }
 
         public void OpenWindow(bool sound = true)
@@ -92,8 +88,10 @@ namespace Multiplayer.Client
             };
         }
 
-        public void ExposeData()
+        public override void ExposeData()
         {
+            base.ExposeData();
+
             Scribe_Collections.Look(ref transferables, "transferables", LookMode.Deep);
             Scribe_Collections.Look(ref pods, "transporters", LookMode.Reference);
 
@@ -109,6 +107,17 @@ namespace Multiplayer.Client
         public void Notify_CountChanged(Transferable tr)
         {
             uiDirty = true;
+        }
+
+        public override bool IsCurrentlyPausing(Map map) => map == this.map;
+
+        public override FloatMenuOption GetBlockingWindowOptions(ColonistBar.Entry entry)
+        {
+            return new FloatMenuOption("MpTransportLoadingSession".Translate(), () =>
+            {
+                SwitchToMapOrWorld(entry.map);
+                OpenWindow();
+            });
         }
     }
 

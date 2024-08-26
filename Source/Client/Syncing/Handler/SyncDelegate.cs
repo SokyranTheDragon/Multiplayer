@@ -13,7 +13,7 @@ namespace Multiplayer.Client
 {
     public class SyncDelegate : SyncMethod, ISyncDelegate
     {
-        public const string DELEGATE_THIS = "<>4__this";
+        public const string DelegateThis = "<>4__this";
 
         private Type[] fieldTypes;
         private string[] fieldPaths;
@@ -23,6 +23,7 @@ namespace Multiplayer.Client
         private string[] allowedNull;
         private string[] cancelIfNull;
         private string[] removeNullsFromLists;
+        private string[] exposeFields;
 
         public SyncDelegate(Type delegateType, MethodInfo method, string[] inPaths) :
             base(delegateType, null, method, null)
@@ -64,13 +65,18 @@ namespace Multiplayer.Client
             for (int i = 0; i < fieldPaths.Length; i++)
             {
                 var val = target.GetPropertyOrField(fieldPaths[i]);
-                var type = fieldTypes[i];
                 var path = fieldPaths[i];
 
                 if (fieldTransformers[i] is SyncTransformer tr)
                     writer(tr.Writer.DynamicInvoke(val, target, args), tr.NetworkType, path);
                 else if (!fieldTypes[i].IsCompilerGenerated())
+                {
+                    var type = (SyncType)fieldTypes[i];
+                    if (exposeFields != null && exposeFields.Contains(fieldPathsNoTypes[i]))
+                        type.expose = true;
+
                     writer(val, type, path);
+                }
             }
         }
 
@@ -90,12 +96,17 @@ namespace Multiplayer.Client
                 else if (fieldType.IsCompilerGenerated())
                     value = Activator.CreateInstance(fieldType);
                 else
-                    value = SyncSerialization.ReadSyncObject(data, fieldType);
+                {
+                    SyncType type = fieldType;
+                    if (exposeFields != null && exposeFields.Contains(noTypePath))
+                        type.expose = true;
+                    value = SyncSerialization.ReadSyncObject(data, type);
+                }
 
                 if (value == null)
                 {
                     if (allowedNull != null && !allowedNull.Contains(noTypePath)) return null;
-                    if (noTypePath.EndsWith(DELEGATE_THIS)) return null;
+                    if (noTypePath.EndsWith(DelegateThis)) return null;
                     if (cancelIfNull != null && cancelIfNull.Contains(noTypePath)) return null;
                 }
 
@@ -129,14 +140,14 @@ namespace Multiplayer.Client
             return this;
         }
 
-        public ISyncMethod TransformField<Live, Networked>(string field, Serializer<Live, Networked> serializer)
+        public ISyncDelegate TransformField<Live, Networked>(string field, Serializer<Live, Networked> serializer, bool skipTypeCheck = false)
         {
             CheckFieldsExist(field);
 
             var index = fieldPathsNoTypes.FindIndex(field);
 
-            if (fieldTypes[index] != typeof(Live))
-                throw new Exception($"Arg transformer param mismatch for {this}: {fieldTypes[index]} != {typeof(Live)}");
+            if (!skipTypeCheck && fieldTypes[index] != typeof(Live))
+                throw new Exception($"Field transformer type mismatch for {this}: {fieldTypes[index]} != {typeof(Live)}");
 
             fieldTransformers[index] = new(typeof(Live), typeof(Networked), serializer.Writer, serializer.Reader);
             return this;
@@ -149,7 +160,7 @@ namespace Multiplayer.Client
                     throw new Exception($"Field with path {f} not found");
         }
 
-        public static SyncDelegate Lambda(Type parentType, string parentMethod, int lambdaOrdinal, Type[] parentArgs = null, MethodType parentMethodType = MethodType.Normal)
+        public new static SyncDelegate Lambda(Type parentType, string parentMethod, int lambdaOrdinal, Type[] parentArgs = null, MethodType parentMethodType = MethodType.Normal)
         {
             return Sync.RegisterSyncDelegate(
                 MpMethodUtil.GetLambda(parentType, parentMethod, parentMethodType, parentArgs, lambdaOrdinal),
@@ -157,7 +168,7 @@ namespace Multiplayer.Client
             );
         }
 
-        public static SyncDelegate LambdaInGetter(Type parentType, string parentMethod, int lambdaOrdinal)
+        public new static SyncDelegate LambdaInGetter(Type parentType, string parentMethod, int lambdaOrdinal)
         {
             return Sync.RegisterSyncDelegate(
                 MpMethodUtil.GetLambda(parentType, parentMethod, MethodType.Getter, null, lambdaOrdinal),
@@ -221,6 +232,13 @@ namespace Multiplayer.Client
             return this;
         }
 
+        public ISyncDelegate ExposeFields(params string[] fields)
+        {
+            CheckFieldsExist(fields);
+            exposeFields = fields;
+            return this;
+        }
+
         ISyncDelegate ISyncDelegate.SetContext(SyncContext context)
         {
             SetContext(context);
@@ -230,6 +248,48 @@ namespace Multiplayer.Client
         ISyncDelegate ISyncDelegate.SetDebugOnly()
         {
             SetDebugOnly();
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.SetHostOnly()
+        {
+            SetHostOnly();
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.SetPreInvoke(Action<object, object[]> action)
+        {
+            SetPreInvoke(action);
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.SetPostInvoke(Action<object, object[]> action)
+        {
+            SetPostInvoke(action);
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.TransformArgument<Live, Networked>(int index, Serializer<Live, Networked> serializer, bool skipTypeCheck)
+        {
+            TransformArgument(index, serializer, skipTypeCheck);
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.TransformTarget<Live, Networked>(Serializer<Live, Networked> serializer, bool skipTypeCheck)
+        {
+            TransformTarget(serializer, skipTypeCheck);
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.CancelIfNoSelectedMapObjects()
+        {
+            CancelIfNoSelectedMapObjects();
+            return this;
+        }
+
+        ISyncDelegate ISyncDelegate.CancelIfNoSelectedWorldObjects()
+        {
+            CancelIfNoSelectedWorldObjects();
             return this;
         }
     }

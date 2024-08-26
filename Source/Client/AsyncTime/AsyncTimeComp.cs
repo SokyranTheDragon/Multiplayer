@@ -1,30 +1,26 @@
-extern alias zip;
-
 using HarmonyLib;
 using Multiplayer.Common;
 using RimWorld;
 using RimWorld.Planet;
 using System;
 using System.Collections.Generic;
-using Multiplayer.API;
 using Verse;
 using Multiplayer.Client.Comp;
+using Multiplayer.Client.Factions;
 using Multiplayer.Client.Patches;
 using Multiplayer.Client.Saving;
 using Multiplayer.Client.Util;
 
 namespace Multiplayer.Client
 {
-
     public class AsyncTimeComp : IExposable, ITickable
     {
         public static Map tickingMap;
         public static Map executingCmdMap;
-        public static List<PauseLockDelegate> pauseLocks = new();
 
         public float TickRateMultiplier(TimeSpeed speed)
         {
-            if (IsPaused)
+            if (IsForcePaused)
                 return 0f;
 
             if (IsForceSlowdown)
@@ -49,35 +45,23 @@ namespace Multiplayer.Client
             }
         }
 
-        public TimeSpeed TimeSpeed
+        public TimeSpeed DesiredTimeSpeed => timeSpeedInt;
+
+        public void SetDesiredTimeSpeed(TimeSpeed speed)
         {
-            get => timeSpeedInt;
-            set => timeSpeedInt = value;
+            timeSpeedInt = speed;
         }
 
-        public bool IsPaused
-        {
-            get
-            {
-                var comp = map.MpComp();
-
-                return comp.transporterLoading != null ||
-                       comp.caravanForming != null ||
-                       comp.ritualSession != null ||
-                       comp.mapDialogs.Any() ||
-                       Multiplayer.WorldComp.AnyTradeSessionsOnMap(map) ||
-                       Multiplayer.WorldComp.splitSession != null ||
-                       pauseLocks.Any(x => x(map));
-            }
-        }
+        public bool IsForcePaused => map.MpComp().sessionManager.IsAnySessionCurrentlyPausing(map) ||
+                                     Multiplayer.WorldComp.sessionManager.IsAnySessionCurrentlyPausing(map);
 
         public bool IsForceSlowdown => mapTicks < slower.forceNormalSpeedUntil;
 
-        public bool Paused => this.ActualRateMultiplier(TimeSpeed) == 0f;
+        public bool Paused => this.ActualRateMultiplier(DesiredTimeSpeed) == 0f;
 
-        public float RealTimeToTickThrough { get; set; }
+        public float TimeToTickThrough { get; set; }
 
-        public Queue<ScheduledCommand> Cmds { get => cmds; }
+        public Queue<ScheduledCommand> Cmds => cmds;
 
         public int TickableId => map.uniqueID;
 
@@ -122,7 +106,7 @@ namespace Multiplayer.Client
                 tickListRare.Tick();
                 tickListLong.Tick();
 
-                TickMapTrading();
+                TickMapSessions();
 
                 storyteller.StorytellerTick();
                 storyWatcher.StoryWatcherTick();
@@ -148,26 +132,14 @@ namespace Multiplayer.Client
             }
         }
 
-        public void TickMapTrading()
+        public void TickMapSessions()
         {
-            var trading = Multiplayer.WorldComp.trading;
-
-            for (int i = trading.Count - 1; i >= 0; i--)
-            {
-                var session = trading[i];
-                if (session.playerNegotiator.Map != map) continue;
-
-                if (session.ShouldCancel())
-                {
-                    Multiplayer.WorldComp.RemoveTradeSession(session);
-                    continue;
-                }
-            }
+            map.MpComp().sessionManager.TickSessions();
         }
 
         // These are normally called in Map.MapUpdate() and react to changes in the game state even when the game is paused (not ticking)
         // Update() methods are not deterministic, but in multiplayer all game state changes (which don't happen during ticking) happen in commands
-        // Thus these methods can be moved to Tick() and ExecuteCmd()
+        // Thus these methods can be moved to Tick() and ExecuteCmd() by way of this method
         public void UpdateManagers()
         {
             map.regionGrid.UpdateClean();
@@ -183,7 +155,14 @@ namespace Multiplayer.Client
 
         public void PreContext()
         {
-            map.PushFaction(map.ParentFaction); // bullets?
+            if (Multiplayer.GameComp.multifaction)
+            {
+                map.PushFaction(
+                    map.ParentFaction is { IsPlayer: true }
+                    ? map.ParentFaction
+                    : Multiplayer.WorldComp.spectatorFaction,
+                    force: true);
+            }
 
             prevTime = TimeSnapshot.GetAndSetFromMap(map);
 
@@ -192,9 +171,6 @@ namespace Multiplayer.Client
 
             Current.Game.storyteller = storyteller;
             Current.Game.storyWatcher = storyWatcher;
-
-            //UniqueIdsPatch.CurrentBlock = map.MpComp().mapIdBlock;
-            UniqueIdsPatch.CurrentBlock = Multiplayer.GlobalIdBlock;
 
             Rand.PushState();
             Rand.StateCompressed = randState;
@@ -205,8 +181,6 @@ namespace Multiplayer.Client
 
         public void PostContext()
         {
-            UniqueIdsPatch.CurrentBlock = null;
-
             Current.Game.storyteller = prevStoryteller;
             Current.Game.storyWatcher = prevStoryWatcher;
 
@@ -215,7 +189,8 @@ namespace Multiplayer.Client
             randState = Rand.StateCompressed;
             Rand.PopState();
 
-            map.PopFaction();
+            if (Multiplayer.GameComp.multifaction)
+                map.PopFaction();
         }
 
         public void ExposeData()
@@ -234,7 +209,10 @@ namespace Multiplayer.Client
 
         public void FinalizeInit()
         {
-            cmds = new Queue<ScheduledCommand>(Multiplayer.session.dataSnapshot.mapCmds.GetValueSafe(map.uniqueID) ?? new List<ScheduledCommand>());
+            cmds = new Queue<ScheduledCommand>(
+                Multiplayer.session.dataSnapshot?.MapCmds.GetValueSafe(map.uniqueID) ?? new List<ScheduledCommand>()
+            );
+
             Log.Message($"Init map with cmds {cmds.Count}");
         }
 
@@ -249,7 +227,6 @@ namespace Multiplayer.Client
 
             MpContext context = data.MpContext();
 
-            var updateWorldTime = false;
             keepTheMap = false;
             var prevMap = Current.Game.CurrentMap;
             Current.Game.currentMapIndex = (sbyte)map.Index;
@@ -281,36 +258,20 @@ namespace Multiplayer.Client
 
                 if (cmdType == CommandType.DebugTools)
                 {
-                    MpDebugTools.HandleCmd(data);
-                }
-
-                if (cmdType == CommandType.CreateMapFactionData)
-                {
-                    HandleMapFactionData(cmd, data);
+                    DebugSync.HandleCmd(data);
                 }
 
                 if (cmdType == CommandType.MapTimeSpeed && Multiplayer.GameComp.asyncTime)
                 {
                     TimeSpeed speed = (TimeSpeed)data.ReadByte();
-                    TimeSpeed = speed;
-                    updateWorldTime = true;
+                    SetDesiredTimeSpeed(speed);
 
                     MpLog.Debug("Set map time speed " + speed);
                 }
 
-                if (cmdType == CommandType.MapIdBlock)
-                {
-                    IdBlock block = IdBlock.Deserialize(data);
-
-                    if (map != null)
-                    {
-                        //map.MpComp().mapIdBlock = block;
-                    }
-                }
-
                 if (cmdType == CommandType.Designator)
                 {
-                    HandleDesignator(cmd, data);
+                    HandleDesignator(data);
                 }
 
                 UpdateManagers();
@@ -342,8 +303,6 @@ namespace Multiplayer.Client
                 if (!keepTheMap)
                     TrySetCurrentMap(prevMap);
 
-                Multiplayer.WorldComp.UpdateTimeSpeed(); // In case a letter pauses the map
-
                 keepTheMap = false;
 
                 Multiplayer.game.sync.TryAddCommandRandomState(randState);
@@ -368,28 +327,11 @@ namespace Multiplayer.Client
             }
         }
 
-        private void HandleMapFactionData(ScheduledCommand cmd, ByteReader data)
+        private void HandleDesignator(ByteReader data)
         {
-            int factionId = data.ReadInt32();
-
-            Faction faction = Find.FactionManager.GetById(factionId);
-            MultiplayerMapComp comp = map.MpComp();
-
-            if (!comp.factionData.ContainsKey(factionId))
-            {
-                BeforeMapGeneration.InitNewMapFactionData(map, faction);
-                MpLog.Log($"New map faction data for {faction.GetUniqueLoadID()}");
-            }
-        }
-
-        private void HandleDesignator(ScheduledCommand command, ByteReader data)
-        {
-            var mode = SyncSerialization.ReadSync<DesignatorMode>(data);
-            var designator = SyncSerialization.ReadSync<Designator>(data);
-
             Container<Area>? prevArea = null;
 
-            bool SetState(Designator designator, ByteReader data)
+            bool SetState(Designator designator)
             {
                 if (designator is Designator_AreaAllowed)
                 {
@@ -426,9 +368,12 @@ namespace Multiplayer.Client
                 DesignatorInstall_SetThingToInstall.thingToInstall = null;
             }
 
+            var mode = SyncSerialization.ReadSync<DesignatorMode>(data);
+            var designator = SyncSerialization.ReadSync<Designator>(data);
+
             try
             {
-                if (!SetState(designator, data)) return;
+                if (!SetState(designator)) return;
 
                 if (mode == DesignatorMode.SingleCell)
                 {
@@ -465,9 +410,8 @@ namespace Multiplayer.Client
             nothingHappeningCached = true;
             var list = map.mapPawns.SpawnedPawnsInFaction(Faction.OfPlayer);
 
-            for (int j = 0; j < list.Count; j++)
+            foreach (var pawn in list)
             {
-                Pawn pawn = list[j];
                 if (pawn.HostFaction == null && pawn.RaceProps.Humanlike && pawn.Awake())
                     nothingHappeningCached = false;
             }
@@ -486,12 +430,6 @@ namespace Multiplayer.Client
             if (!Multiplayer.GameComp.asyncTime || Paused) return;
 
             MultiplayerAsyncQuest.TickMapQuests(this);
-        }
-
-        public void TrySetPrevTimeSpeed(TimeSpeed speed)
-        {
-            if (prevTime != null)
-                prevTime = prevTime.Value with { speed = speed };
         }
     }
 

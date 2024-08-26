@@ -288,37 +288,37 @@ namespace Multiplayer.Client
             return rate;
         }
 
-        public static TimePauseSlowdownInfo IsPausedOrSlowedDown(this ITickable tickable)
+        public static ForcedTickRate GetForcedSpeedInfo(this ITickable tickable)
         {
             if (Multiplayer.GameComp.asyncTime)
             {
-                if (tickable.IsPaused)
-                    return TimePauseSlowdownInfo.Paused;
+                if (tickable.IsForcePaused)
+                    return ForcedTickRate.Paused;
                 if (tickable.IsForceSlowdown)
-                    return TimePauseSlowdownInfo.Slowdown;
-                return TimePauseSlowdownInfo.Normal;
+                    return ForcedTickRate.Slowdown;
+                return ForcedTickRate.Normal;
             }
 
-            if (Multiplayer.WorldComp.IsPaused)
-                return TimePauseSlowdownInfo.Paused;
+            if (Multiplayer.AsyncWorldTime.IsForcePaused)
+                return ForcedTickRate.Paused;
 
-            // Could just use false, as it currently can not be force slowed down.
-            // If we keep this, some mods may potentially use force slowdown on world.
-            var isForceSlowdown = Multiplayer.WorldComp.IsForceSlowdown;
+            // Could just use false as default, as it currently can
+            // not be true unless a mod makes a Harmony patch.
+            var isForceSlowdown = Multiplayer.AsyncWorldTime.IsForceSlowdown;
 
             foreach (var map in Find.Maps)
             {
                 var comp = map.AsyncTime();
 
-                if (comp.IsPaused)
-                    return TimePauseSlowdownInfo.Paused;
+                if (comp.IsForcePaused)
+                    return ForcedTickRate.Paused;
                 if (!isForceSlowdown)
                     isForceSlowdown = comp.IsForceSlowdown;
             }
 
             if (isForceSlowdown)
-                return TimePauseSlowdownInfo.Slowdown;
-            return TimePauseSlowdownInfo.Normal;
+                return ForcedTickRate.Slowdown;
+            return ForcedTickRate.Normal;
         }
 
         public static void ClearSimulating()
@@ -362,5 +362,5 @@ namespace Multiplayer.Client
         public string simTextKey;
     }
 
-    public enum TimePauseSlowdownInfo { Normal, Paused, Slowdown, }
+    public enum ForcedTickRate { Normal, Paused, Slowdown, }
 }

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
 using HarmonyLib;
@@ -106,11 +106,11 @@ public static class TimeControlPatch
             rect.x += rect.width;
         }
 
-        ForcedTickRateInfo info = Tickable.GetForcedSpeedInfo();
+        ForcedTickRate info = Tickable.GetForcedSpeedInfo();
 
-        if (info == ForcedTickRateInfo.Paused) // Completely paused
+        if (info == ForcedTickRate.Paused) // Completely paused
             Widgets.DrawLineHorizontal(rect.width, rect.height / 2f, rect.width * 3f);
-        else if (info == ForcedTickRateInfo.Slowdown) // Slowed down
+        else if (info == ForcedTickRate.Slowdown) // Slowed down
             Widgets.DrawLineHorizontal(rect.width * 2f, rect.height / 2f, rect.width * 2f);
 
         Widgets.EndGroup();

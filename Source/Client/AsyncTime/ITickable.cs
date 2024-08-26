@@ -22,7 +22,7 @@ namespace Multiplayer.Client
 
         void ExecuteCmd(ScheduledCommand cmd);
 
-        bool IsPaused { get; }
+        bool IsForcePaused { get; }
 
         bool IsForceSlowdown { get; }
     }

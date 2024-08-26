@@ -258,7 +258,7 @@ namespace Multiplayer.Client.Util
             {
                 te.scrollOffset = scrollOffset;
                 te.text = new string(PassChar, password.Length);
-                AccessTools.Field(typeof(TextEditor), nameof(TextEditor.m_RevealCursor)).SetValue(te, true);
+                AccessTools.Field(typeof(TextEditor), "m_RevealCursor").SetValue(te, true);
                 te.UpdateScrollOffsetIfNeeded(new Event());
             }
         }

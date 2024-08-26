@@ -288,7 +288,7 @@ namespace Multiplayer.Client
             return rate;
         }
 
-        public static ForcedTickRate GetForcedSpeedInfo(this ITickable tickable)
+        public static ForcedTickRate GetForcedTickRate(this ITickable tickable)
         {
             if (Multiplayer.GameComp.asyncTime)
             {

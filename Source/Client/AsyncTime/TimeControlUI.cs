@@ -106,7 +106,7 @@ public static class TimeControlPatch
             rect.x += rect.width;
         }
 
-        ForcedTickRate info = Tickable.GetForcedSpeedInfo();
+        ForcedTickRate info = Tickable.GetForcedTickRate();
 
         if (info == ForcedTickRate.Paused) // Completely paused
             Widgets.DrawLineHorizontal(rect.width, rect.height / 2f, rect.width * 3f);

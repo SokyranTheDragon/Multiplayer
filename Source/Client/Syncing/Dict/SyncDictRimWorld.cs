@@ -878,7 +878,8 @@ namespace Multiplayer.Client
                     if (objId == -1)
                         return null;
 
-                    return Find.World.worldObjects.AllWorldObjects.Find(w => w.ID == objId);
+                    return Find.World.worldObjects.AllWorldObjects.Find(w => w.ID == objId) ??
+                           Find.World.pocketMaps.Find(p => p.ID == objId);
                 }, true // Implicit
             },
             {

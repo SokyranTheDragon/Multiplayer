@@ -94,12 +94,18 @@ namespace Multiplayer.Client
     [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(Action))]
     static class SeedLongEvents
     {
-        static void Prefix(ref Action action)
+        static void Prefix(ref Action action, ref Action callback)
         {
             if (Multiplayer.Client != null && (Multiplayer.Ticking || Multiplayer.ExecutingCmds))
             {
                 var seed = Rand.Int;
                 action = (() => PushState(seed)) + action + Rand.PopState;
+
+                if (callback != null)
+                {
+                    var callbackSeed = Rand.Int;
+                    callback = (() => PushState(callbackSeed)) + callback + Rand.PopState;
+                }
             }
         }
 

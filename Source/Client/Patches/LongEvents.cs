@@ -62,22 +62,17 @@ namespace Multiplayer.Client.Patches
         }
     }
 
-    [HarmonyPriority(Priority.HigherThanNormal)]
     [HarmonyPatch(typeof(LongEventHandler), nameof(LongEventHandler.QueueLongEvent), new[] { typeof(Action), typeof(string), typeof(bool), typeof(Action<Exception>), typeof(bool), typeof(Action) })]
     static class LongEventAlwaysSync
     {
-        public static bool forceSynchronously = false;
-
         static void Prefix(ref bool doAsynchronously, ref Action action, Action callback)
         {
-            if (Multiplayer.ExecutingCmds || forceSynchronously)
+            if (Multiplayer.ExecutingCmds)
             {
                 doAsynchronously = false;
 
                 // Callback is only called in asynchronous long events and will be skipped in
                 // a synchronous ones. Make sure they are called after the actual action.
-                // This patch also needs higher priority than SeedLongEvents
-                // to make sure that both action and callback are seeded properly.
                 if (callback != null)
                     action += callback;
             }

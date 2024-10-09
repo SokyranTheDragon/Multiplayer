@@ -667,12 +667,18 @@ namespace Multiplayer.Client
                 }
             },
             {
-                (SyncWorker sync, ref DesignationManager manager) =>
+                (ByteWriter data, DesignationManager manager) =>
                 {
-                    if (sync.isWriting)
-                        sync.Write(manager?.map);
-                    else
-                        manager = sync.Read<Map>()?.designationManager;
+                    var isNull = manager?.map == null;
+                    data.WriteBool(isNull);
+                    if (!isNull)
+                        data.MpContext().map = manager.map;
+                },
+                (ByteReader data) =>
+                {
+                    if (data.ReadBool())
+                        return null;
+                    return data.MpContext().map.designationManager;
                 }
             },
             {

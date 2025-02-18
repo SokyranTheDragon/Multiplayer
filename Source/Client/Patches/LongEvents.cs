@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Multiplayer.Common;
+using RimWorld.Planet;
 using Verse;
 
 namespace Multiplayer.Client.Patches
@@ -69,6 +70,88 @@ namespace Multiplayer.Client.Patches
         {
             if (Multiplayer.ExecutingCmds)
                 doAsynchronously = false;
+        }
+    }
+
+    // [HarmonyPatch(typeof(SectionLayer_BuildingsDamage), nameof(SectionLayer_BuildingsDamage.PrintScratches))]
+    // [HarmonyPatch(typeof(SectionLayer_BuildingsDamage), nameof(SectionLayer_BuildingsDamage.PrintCornersAndEdges))]
+    [HarmonyPatch(typeof(MapDrawer), nameof(MapDrawer.RegenerateEverythingNow))]
+    [HarmonyPatch(typeof(SettleInEmptyTileUtility), nameof(SettleInEmptyTileUtility.Settle))]
+    static class Testing1
+    {
+        // static void Prefix(Building b)
+        static void Prefix()
+        {
+            LongEventTest.logRand = false;
+            // Log.Error($"MP: {Multiplayer.Client != null}, Main thread: {UnityData.IsInMainThread}, building: {b}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}");
+            Log.Error($"MP: {Multiplayer.Client != null}, Main thread: {UnityData.IsInMainThread}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}, stack: {(Rand.stateStack.Count > 0 ? Rand.stateStack.Peek() : 0)}");
+        }
+    }
+
+    [HarmonyPatch(typeof(MapGenerator), nameof(MapGenerator.GenerateMap))]
+    static class LongEventTest
+    {
+        public static bool logRand = false;
+
+        static void Prefix(MapParent parent, bool isPocketMap)
+        {
+            Log.Error($"Pre-Pre long event, MP: {Multiplayer.Client != null}, Main thread: {UnityData.IsInMainThread}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}, stack: {(Rand.stateStack.Count > 0 ? Rand.stateStack.Peek() : 0)}");
+        }
+
+        static void Postfix(MapParent parent, bool isPocketMap)
+        {
+            // logRand = true;
+            Log.Error($"Pre long event, MP: {Multiplayer.Client != null}, Main thread: {UnityData.IsInMainThread}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}, stack: {(Rand.stateStack.Count > 0 ? Rand.stateStack.Peek() : 0)}");
+            LongEventHandler.ExecuteWhenFinished(() =>
+            {
+                Log.Error($"Post long event, MP: {Multiplayer.Client != null}, Main thread: {UnityData.IsInMainThread}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}, stack: {(Rand.stateStack.Count > 0 ? Rand.stateStack.Peek() : 0)}");
+            });
+        }
+    }
+
+    [HarmonyPatch(typeof(Rand), nameof(Rand.PushState), [])]
+    static class LogRandTest1
+    {
+        static void Prefix()
+        {
+            if (LongEventTest.logRand)
+                Log.Error($"Pushed state.");
+        }
+    }
+
+    [HarmonyPatch(typeof(Rand), nameof(Rand.PushState), [typeof(int)])]
+    static class LogRandTest2
+    {
+        static void Prefix(int replacementSeed)
+        {
+            if (LongEventTest.logRand)
+                Log.Error($"Pushed state with {replacementSeed}.");
+        }
+    }
+
+    [HarmonyPatch(typeof(Rand), nameof(Rand.Seed), MethodType.Setter)]
+    static class LogRandTest3
+    {
+        static void Prefix(int __0)
+        {
+            if (LongEventTest.logRand)
+                Log.Error($"Set seed with {__0}.");
+        }
+    }
+
+    [HarmonyPatch(typeof(Rand), nameof(Rand.PopState))]
+    static class LogRandTest44
+    {
+        static void Prefix()
+        {
+            if (LongEventTest.logRand)
+                Log.Error($"Pre Popped state, MP: {Multiplayer.Client != null}, interface: {Multiplayer.InInterface}, Main thread: {UnityData.IsInMainThread}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}, stack: {(Rand.stateStack.Count > 0 ? Rand.stateStack.Peek() : 0)}");
+        }
+
+        static void Postfix()
+        {
+            if (LongEventTest.logRand)
+                Log.Error($"Post Popped state, MP: {Multiplayer.Client != null}, interface: {Multiplayer.InInterface}, Main thread: {UnityData.IsInMainThread}, tick: {Find.TickManager?.TicksGame ?? -1}, RNG seed: {Rand.seed}, RNG iterations: {Rand.iterations}, RNG state: {Rand.StateCompressed}, stack: {(Rand.stateStack.Count > 0 ? Rand.stateStack.Peek() : 0)}");
         }
     }
 }

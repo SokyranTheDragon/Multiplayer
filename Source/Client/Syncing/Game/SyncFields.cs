@@ -128,8 +128,8 @@ namespace Multiplayer.Client
             SyncFactionAcceptRoyalFavor = Sync.Field(typeof(Faction), nameof(Faction.allowRoyalFavorRewards));
             SyncFactionAcceptGoodwill = Sync.Field(typeof(Faction), nameof(Faction.allowGoodwillRewards));
 
-            SyncThingFilterHitPoints = Sync.Field(typeof(ThingFilterContext), "Filter/AllowedHitPointsPercents").SetBufferChanges();
-            SyncThingFilterQuality = Sync.Field(typeof(ThingFilterContext), "Filter/AllowedQualityLevels").SetBufferChanges();
+            SyncThingFilterHitPoints = Sync.Field(typeof(ThingFilterContext), $"{nameof(ThingFilterContext.Filter)}/{nameof(ThingFilter.AllowedHitPointsPercents)}").SetBufferChanges();
+            SyncThingFilterQuality = Sync.Field(typeof(ThingFilterContext), $"{nameof(ThingFilterContext.Filter)}/{nameof(ThingFilter.AllowedQualityLevels)}").SetBufferChanges();
 
             SyncBillPaused = Sync.Field(typeof(Bill_Production), nameof(Bill_Production.paused)).SetBufferChanges();
             SyncBillSuspended = Sync.Field(typeof(Bill), nameof(Bill.suspended));

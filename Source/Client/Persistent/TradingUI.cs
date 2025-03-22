@@ -451,7 +451,7 @@ namespace Multiplayer.Client
 
             for (int i = 0; i < 2; i++)
             {
-                int getAllTradeables = finder.Forward(OpCodes.Callvirt, AccessTools.Method(typeof(TradeDeal), "get_AllTradeables"));
+                int getAllTradeables = finder.Forward(OpCodes.Callvirt, AccessTools.PropertyGetter(typeof(TradeDeal), nameof(TradeDeal.AllTradeables)));
 
                 insts.RemoveRange(getAllTradeables - 1, 2);
                 insts.Insert(getAllTradeables - 1, new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(TradingWindow), nameof(TradingWindow.AllTradeables))));

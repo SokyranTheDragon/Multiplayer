@@ -163,6 +163,18 @@ namespace Multiplayer.Client
         }
     }
 
+    [HarmonyPatch(typeof(CompCauseGameCondition), nameof(CompCauseGameCondition.EnforceConditionOn))]
+    static class MapConditionCauserMapTime
+    {
+        static void Prefix(Map map, ref TimeSnapshot? __state)
+        {
+            if (Multiplayer.Client == null) return;
+            __state = TimeSnapshot.GetAndSetFromMap(map);
+        }
+
+        static void Finalizer(TimeSnapshot? __state) => __state?.Set();
+    }
+
     public struct TimeSnapshot
     {
         public int ticks;

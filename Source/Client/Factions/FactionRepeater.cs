@@ -179,4 +179,18 @@ namespace Multiplayer.Client
             );
     }
 
+    [HarmonyPatch(typeof(ResearchManager), nameof(ResearchManager.Notify_MonolithLevelChanged))]
+    static class MonolithLevelChangedPatch
+    {
+        static bool ignore;
+
+        static bool Prefix(int newLevel) =>
+            FactionRepeater.Template(
+                Multiplayer.game?.worldComp.factionData,
+                d => d.researchManager.Notify_MonolithLevelChanged(newLevel),
+                null,
+                ref ignore
+            );
+    }
+
 }

@@ -106,6 +106,8 @@ namespace Multiplayer.Client
             SyncMethod.Register(typeof(Building_ShipComputerCore), nameof(Building_ShipComputerCore.TryLaunch));
             SyncMethod.Register(typeof(CompPower), nameof(CompPower.TryManualReconnect));
             SyncMethod.Register(typeof(CompTempControl), nameof(CompTempControl.InterfaceChangeTargetTemperature_NewTemp));
+            SyncMethod.Lambda(typeof(CompTempControl), nameof(CompTempControl.CompGetGizmosExtra), 2);               // Reset temperature
+            SyncMethod.Lambda(typeof(Comp_AtmosphericHeater), nameof(Comp_AtmosphericHeater.CompGetGizmosExtra), 0); // Reset temperature
             SyncMethod.Register(typeof(CompTransporter), nameof(CompTransporter.CancelLoad), Array.Empty<SyncType>());
             SyncMethod.Register(typeof(MapPortal), nameof(MapPortal.CancelLoad));
             SyncMethod.Register(typeof(StorageSettings), nameof(StorageSettings.CopyFrom)).ExposeParameter(0);

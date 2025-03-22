@@ -955,6 +955,10 @@ namespace Multiplayer.Client
                     }
                 }, true // implicit
             },
+            {
+                (ByteWriter _, ResearchManager _) => { },
+                (ByteReader _) => Find.ResearchManager
+            },
             #endregion
 
             #region Areas

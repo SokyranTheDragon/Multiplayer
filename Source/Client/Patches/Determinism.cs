@@ -587,4 +587,18 @@ namespace Multiplayer.Client.Patches
         }
     }
 
+    // TODO: Do something in the future to actually support variable tick rate
+    [HarmonyPatch(typeof(GenTicks), nameof(GenTicks.GetCameraUpdateRate))]
+    static class StaticRefreshRate
+    {
+        static bool Prefix(ref int __result)
+        {
+            if (Multiplayer.Client == null)
+                return true;
+
+            __result = 1;
+            return false;
+        }
+    }
+
 }

@@ -91,11 +91,12 @@ namespace Multiplayer.Client
             action?.Invoke();
         }
 
-        public void PatchAll(string methodName)
+        public void PatchAll(string methodName, string postfixName = null, Type typeOverride = null)
         {
-            foreach (var type in typeof(A).AllSubtypesAndSelf())
+            foreach (var type in (typeOverride ?? typeof(A)).AllSubtypesAndSelf())
             {
-                if (type.IsAbstract) continue;
+                // Disallow abstract classes, but allow static classes
+                if (type.IsAbstract && !type.IsSealed) continue;
 
                 foreach (var method in type.GetDeclaredMethods().Where(m => m.Name == methodName))
                 {
@@ -104,7 +105,9 @@ namespace Multiplayer.Client
 
                     HarmonyMethod postfix;
 
-                    if (method.GetParameters().Length == 1)
+                    if (postfixName != null)
+                        postfix = new HarmonyMethod(typeof(SyncActions), postfixName);
+                    else if (method.GetParameters().Length == 1)
                         postfix = new HarmonyMethod(typeof(SyncActions), nameof(SyncActions.SyncAction1_Postfix));
                     else if (method.GetParameters().Length == 2)
                         postfix = new HarmonyMethod(typeof(SyncActions), nameof(SyncActions.SyncAction2_Postfix));

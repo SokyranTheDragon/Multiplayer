@@ -375,17 +375,20 @@ namespace Multiplayer.Client
 
                 var thingMethods = new[]
                 {
-                    ("Tick", Type.EmptyTypes),
-                    ("TickRare", Type.EmptyTypes),
-                    ("TickLong", Type.EmptyTypes),
-                    ("TakeDamage", new[]{ typeof(DamageInfo) }),
-                    ("Kill", new[]{ typeof(DamageInfo?), typeof(Hediff) })
+                    (nameof(Thing.TickRare), Type.EmptyTypes),
+                    (nameof(Thing.TickLong), Type.EmptyTypes),
+                    (nameof(Thing.TakeDamage), new[]{ typeof(DamageInfo) }),
+                    (nameof(Thing.Kill), new[]{ typeof(DamageInfo?), typeof(Hediff) })
                 };
+
+                // TODO: Check if patching DoTick is actually going to be better rather than both Tick and TickInterval
+                MethodInfo doTickMethod = typeof(Thing).GetMethod(nameof(Thing.DoTick), BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+                TryPatch(doTickMethod, thingMethodPrefix, finalizer: thingMethodFinalizer);
 
                 foreach (Type t in typeof(Thing).AllSubtypesAndSelf())
                 {
                     // SpawnSetup is patched separately because it sets the map
-                    var spawnSetupMethod = t.GetMethod("SpawnSetup", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly, null, new[] { typeof(Map), typeof(bool) }, null);
+                    var spawnSetupMethod = t.GetMethod("SpawnSetup", BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly, null, [typeof(Map), typeof(bool)], null);
                     if (spawnSetupMethod != null)
                         TryPatch(spawnSetupMethod, thingMethodPrefixSpawnSetup, finalizer: thingMethodFinalizer);
 

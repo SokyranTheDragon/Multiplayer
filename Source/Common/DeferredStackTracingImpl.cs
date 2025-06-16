@@ -36,6 +36,9 @@ public static class DeferredStackTracingImpl
 
     public static unsafe int TraceImpl(long[] traceIn, ref int hash)
     {
+        // TODO: Fix stack tracing, perhaps a wrong offset for Native.LmfPtr?
+        return 0;
+
         long[] trace = traceIn;
         long rbp = GetRbp();
         long stck = rbp;

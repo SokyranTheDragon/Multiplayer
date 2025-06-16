@@ -71,15 +71,27 @@ namespace Multiplayer.Client
         static bool Prefix() => !Multiplayer.arbiterInstance;
     }
 
-    [HarmonyPatch(typeof(WorldRenderer), MethodType.Constructor)]
-    static class CancelWorldRendererCtor
+    // TODO: Test if it works in 1.6
+    [HarmonyPatch(typeof(WorldGrid), (nameof(WorldGrid.InitializeGlobalLayers)))]
+    static class NoWorldRenderLayersForArbiter
     {
         static bool Prefix() => !Multiplayer.arbiterInstance;
 
-        static void Postfix(WorldRenderer __instance)
+        static void Postfix(WorldGrid __instance)
         {
             if (Multiplayer.arbiterInstance)
-                __instance.layers = new List<WorldLayer>();
+                __instance.globalLayers.Clear();
+        }
+    }
+
+    // TODO: Test if it works in 1.6, we may need a way to fully prevent the layers from being initialized
+    [HarmonyPatch(typeof(PlanetLayer), nameof(PlanetLayer.InitializeLayer))]
+    static class NoPlanetRenderLayersForArbiter
+    {
+        static void Postfix(PlanetLayer __instance)
+        {
+            if (Multiplayer.arbiterInstance)
+                __instance.WorldDrawLayers.Clear();
         }
     }
 

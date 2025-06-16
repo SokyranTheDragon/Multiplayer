@@ -59,6 +59,7 @@ namespace Multiplayer.Client
 
             // Struct offset found manually
             // Navigate by string: "Handle Stack"
+            // TODO: Check if the offsets are wrong and causing desync tracing issues
             if (os == NativeOS.Linux)
                 LmfPtr = threadInfoPtr + 0x480 - 8 * 4;
             else if (os == NativeOS.Windows)

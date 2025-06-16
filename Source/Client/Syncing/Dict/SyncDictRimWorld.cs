@@ -933,6 +933,16 @@ namespace Multiplayer.Client
                 (ByteWriter data, Caravan_ForageTracker tracker) => WriteSync(data, tracker?.caravan),
                 (ByteReader data) => ReadSync<Caravan>(data)?.forage
             },
+            {
+                (ByteWriter data, PlanetTile tile) =>
+                {
+                    // TODO: Consider using int16 rather that int32 to minimize network traffic.
+                    // Investigate if the tiles/layers are small enough to allow that.
+                    data.WriteInt32(tile.tileId);
+                    data.WriteInt32(tile.layerId);
+                },
+                (ByteReader data) => new PlanetTile(data.ReadInt32(), data.ReadInt32())
+            },
             #endregion
 
             #region Game
